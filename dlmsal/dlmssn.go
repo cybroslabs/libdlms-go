@@ -15,28 +15,29 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 		return nil, fmt.Errorf("no items to read")
 	}
 
+	local := &d.pdu
 	// format request into byte slice and send that to unit
-	d.pdu.Reset()
-	d.pdu.WriteByte(byte(TagReadRequest))
-	encodelength(&d.pdu, uint(len(items)))
+	local.Reset()
+	local.WriteByte(byte(TagReadRequest))
+	encodelength(local, uint(len(items)))
 	for _, item := range items {
 		if item.HasAccess {
-			d.pdu.WriteByte(4)
-			d.pdu.WriteByte(byte(item.Address >> 8))
-			d.pdu.WriteByte(byte(item.Address))
-			d.pdu.WriteByte(item.AccessDescriptor)
-			err := encodeData(&d.pdu, item.AccessData)
+			local.WriteByte(4)
+			local.WriteByte(byte(item.Address >> 8))
+			local.WriteByte(byte(item.Address))
+			local.WriteByte(item.AccessDescriptor)
+			err := encodeData(local, item.AccessData)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			d.pdu.WriteByte(2)
-			d.pdu.WriteByte(byte(item.Address >> 8))
-			d.pdu.WriteByte(byte(item.Address))
+			local.WriteByte(2)
+			local.WriteByte(byte(item.Address >> 8))
+			local.WriteByte(byte(item.Address))
 		}
 	}
 
-	err := d.transport.Write(d.pdu.Bytes())
+	err := d.transport.Write(local.Bytes())
 	if err != nil {
 		return nil, err
 	}

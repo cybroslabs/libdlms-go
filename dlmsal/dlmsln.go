@@ -23,48 +23,49 @@ func (ln *dlmsalget) get(items []DlmsLNRequestItem) ([]DlmsData, error) {
 		return nil, fmt.Errorf("no items to read")
 	}
 
-	ln.base.pdu.Reset()
-	ln.base.pdu.WriteByte(byte(TagGetRequest))
+	local := &ln.base.pdu
+	local.Reset()
+	local.WriteByte(byte(TagGetRequest))
 	if len(items) > 1 {
-		ln.base.pdu.WriteByte(byte(TagGetRequestWithList))
+		local.WriteByte(byte(TagGetRequestWithList))
 	} else {
-		ln.base.pdu.WriteByte(byte(TagGetRequestNormal))
+		local.WriteByte(byte(TagGetRequestNormal))
 	}
 	ln.base.invokeid = (ln.base.invokeid + 1) & 7
-	ln.base.pdu.WriteByte(ln.base.invokeid | ln.base.settings.HighPriority | ln.base.settings.ConfirmedRequests)
+	local.WriteByte(ln.base.invokeid | ln.base.settings.HighPriority | ln.base.settings.ConfirmedRequests)
 
 	if len(items) > 1 {
-		encodelength(&ln.base.pdu, uint(len(items)))
+		encodelength(local, uint(len(items)))
 	}
 
 	for _, i := range items {
-		ln.base.pdu.WriteByte(byte(i.ClassId >> 8))
-		ln.base.pdu.WriteByte(byte(i.ClassId))
-		ln.base.pdu.WriteByte(i.Obis.A)
-		ln.base.pdu.WriteByte(i.Obis.B)
-		ln.base.pdu.WriteByte(i.Obis.C)
-		ln.base.pdu.WriteByte(i.Obis.D)
-		ln.base.pdu.WriteByte(i.Obis.E)
-		ln.base.pdu.WriteByte(i.Obis.F)
-		ln.base.pdu.WriteByte(byte(i.Attribute))
+		local.WriteByte(byte(i.ClassId >> 8))
+		local.WriteByte(byte(i.ClassId))
+		local.WriteByte(i.Obis.A)
+		local.WriteByte(i.Obis.B)
+		local.WriteByte(i.Obis.C)
+		local.WriteByte(i.Obis.D)
+		local.WriteByte(i.Obis.E)
+		local.WriteByte(i.Obis.F)
+		local.WriteByte(byte(i.Attribute))
 		if i.HasAccess {
-			ln.base.pdu.WriteByte(1)
-			ln.base.pdu.WriteByte(i.AccessDescriptor)
-			err := encodeData(&ln.base.pdu, i.AccessData)
+			local.WriteByte(1)
+			local.WriteByte(i.AccessDescriptor)
+			err := encodeData(local, i.AccessData)
 			if err != nil {
 				return nil, fmt.Errorf("unable to encode data: %v", err)
 			}
 		} else {
-			ln.base.pdu.WriteByte(0)
+			local.WriteByte(0)
 		}
 	}
 
-	if ln.base.pdu.Len() > ln.base.maxPduSendSize {
-		return nil, fmt.Errorf("PDU size exceeds maximum size: %v > %v", ln.base.pdu.Len(), ln.base.maxPduSendSize)
+	if local.Len() > ln.base.maxPduSendSize {
+		return nil, fmt.Errorf("PDU size exceeds maximum size: %v > %v", local.Len(), ln.base.maxPduSendSize)
 	}
 
 	// send itself, that could be fun, do that in one step for now
-	err := ln.base.transport.Write(ln.base.pdu.Bytes())
+	err := ln.base.transport.Write(local.Bytes())
 	if err != nil {
 		return nil, err
 	}
