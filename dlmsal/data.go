@@ -1,6 +1,7 @@
 package dlmsal
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"fmt"
@@ -44,8 +45,12 @@ const (
 )
 
 type DlmsData struct {
-	Tag   dataTag
 	Value interface{}
+	Tag   dataTag
+}
+
+func NewDlmsDataError(err DlmsError) DlmsData {
+	return DlmsData{Tag: TagError, Value: err}
 }
 
 type DlmsError struct {
@@ -53,75 +58,66 @@ type DlmsError struct {
 }
 
 type DlmsCompactArray struct {
-	Tag   dataTag
-	Tags  []dataTag
-	Value []DlmsData
+	tag   dataTag
+	tags  []dataTag
+	value []DlmsData
 }
 
-func (d *dlmsal) decodeDataTag(src io.Reader) (data DlmsData, c int, err error) {
-	_, err = io.ReadFull(src, d.tmpbuffer[:1])
+func decodeDataTag(src io.Reader, tmpbuffer []byte) (data DlmsData, c int, err error) {
+	_, err = io.ReadFull(src, tmpbuffer[:1])
 	if err != nil {
 		return
 	}
-	t := d.tmpbuffer[0]
-	data, c, err = d.decodeData(src, dataTag(t))
+	t := dataTag(tmpbuffer[0])
+	data, c, err = decodeData(src, t, tmpbuffer)
 	return data, c + 1, err
 }
 
-func (al *dlmsal) decodeData(src io.Reader, tag dataTag) (data DlmsData, c int, err error) {
+func decodeDataArray(src io.Reader, tag dataTag, tmpbuffer []byte) (data DlmsData, c int, err error) {
+	var ii int
+	l, c, err := decodelength(src, tmpbuffer)
+	if err != nil {
+		return data, 0, err
+	}
+	d := make([]DlmsData, l)
+	for i := 0; i < int(l); i++ {
+		d[i], ii, err = decodeDataTag(src, tmpbuffer)
+		if err != nil {
+			return data, 0, err
+		}
+		c += ii
+	}
+	return DlmsData{Tag: tag, Value: d}, c, nil
+}
+
+func decodeData(src io.Reader, tag dataTag, tmpbuffer []byte) (data DlmsData, c int, err error) {
 	switch tag {
 	case TagNull:
-		return DlmsData{Tag: tag, Value: nil}, 0, nil
+		return DlmsData{Tag: tag}, 0, nil
 	case TagArray:
-		var ii int
-		l, c, err := decodelength(src, al.tmpbuffer)
-		if err != nil {
-			return data, 0, err
-		}
-		d := make([]DlmsData, l)
-		for i := 0; i < int(l); i++ {
-			d[i], ii, err = al.decodeDataTag(src)
-			if err != nil {
-				return data, 0, err
-			}
-			c += ii
-		}
-		return DlmsData{Tag: tag, Value: d}, c, nil
+		return decodeDataArray(src, tag, tmpbuffer)
 	case TagStructure:
-		var ii int
-		l, c, err := decodelength(src, al.tmpbuffer)
-		if err != nil {
-			return data, 0, err
-		}
-		d := make([]DlmsData, l)
-		for i := 0; i < int(l); i++ {
-			d[i], ii, err = al.decodeDataTag(src)
-			if err != nil {
-				return data, 0, err
-			}
-			c += ii
-		}
-		return DlmsData{Tag: tag, Value: d}, c, nil
+		return decodeDataArray(src, tag, tmpbuffer)
 	case TagBoolean:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:1])
+			_, err = io.ReadFull(src, tmpbuffer[:1])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for boolean, %v", err)
 			}
-			return DlmsData{Tag: tag, Value: al.tmpbuffer[0] != 0}, 1, nil
+			return DlmsData{Tag: tag, Value: tmpbuffer[0] != 0}, 1, nil
 		}
 	case TagBitString:
 		{
-			l, c, err := decodelength(src, al.tmpbuffer)
+			l, c, err := decodelength(src, tmpbuffer)
 			if err != nil {
 				return data, 0, err
 			}
 			blen := (l + 7) >> 3
 			var tmp []byte
-			if blen > uint(len(al.tmpbuffer)) {
+			if blen > uint(len(tmpbuffer)) {
 				tmp = make([]byte, blen)
 			} else {
-				tmp = al.tmpbuffer[:blen]
+				tmp = tmpbuffer[:blen]
 			}
 			_, err = io.ReadFull(src, tmp)
 			if err != nil {
@@ -143,34 +139,33 @@ func (al *dlmsal) decodeData(src io.Reader, tag dataTag) (data DlmsData, c int, 
 		}
 	case TagDoubleLong:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:4])
+			_, err = io.ReadFull(src, tmpbuffer[:4])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for double long %v", err)
 			}
-			v := int32(al.tmpbuffer[0])<<24 | int32(al.tmpbuffer[1])<<16 | int32(al.tmpbuffer[2])<<8 | int32(al.tmpbuffer[3])
+			v := int32(tmpbuffer[0])<<24 | int32(tmpbuffer[1])<<16 | int32(tmpbuffer[2])<<8 | int32(tmpbuffer[3])
 			return DlmsData{Tag: tag, Value: v}, 4, nil
 		}
 	case TagDoubleLongUnsigned:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:4])
+			_, err = io.ReadFull(src, tmpbuffer[:4])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for double long unsigned %v", err)
 			}
-			v := uint32(al.tmpbuffer[0])<<24 | uint32(al.tmpbuffer[1])<<16 | uint32(al.tmpbuffer[2])<<8 | uint32(al.tmpbuffer[3])
+			v := uint32(tmpbuffer[0])<<24 | uint32(tmpbuffer[1])<<16 | uint32(tmpbuffer[2])<<8 | uint32(tmpbuffer[3])
 			return DlmsData{Tag: tag, Value: v}, 4, nil
 		}
 	case TagFloatingPoint:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:4])
+			_, err = io.ReadFull(src, tmpbuffer[:4])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for floating point %v", err)
 			}
-			v := math.Float32frombits(binary.BigEndian.Uint32(al.tmpbuffer[:4]))
-			return DlmsData{Tag: tag, Value: v}, 4, nil
+			return DlmsData{Tag: tag, Value: math.Float32frombits(binary.BigEndian.Uint32(tmpbuffer[:4]))}, 4, nil
 		}
 	case TagOctetString:
 		{
-			l, c, err := decodelength(src, al.tmpbuffer)
+			l, c, err := decodelength(src, tmpbuffer)
 			if err != nil {
 				return data, 0, err
 			}
@@ -183,7 +178,7 @@ func (al *dlmsal) decodeData(src io.Reader, tag dataTag) (data DlmsData, c int, 
 		}
 	case TagVisibleString:
 		{
-			l, c, err := decodelength(src, al.tmpbuffer)
+			l, c, err := decodelength(src, tmpbuffer)
 			if err != nil {
 				return data, 0, err
 			}
@@ -196,20 +191,16 @@ func (al *dlmsal) decodeData(src io.Reader, tag dataTag) (data DlmsData, c int, 
 		}
 	case TagUTF8String:
 		{
-			l, c, err := decodelength(src, al.tmpbuffer)
+			l, c, err := decodelength(src, tmpbuffer)
 			if err != nil {
 				return data, 0, err
 			}
-			outByte := make([]byte, l)
-			_, err = io.ReadFull(src, outByte)
-			if err != nil {
-				return data, 0, fmt.Errorf("too short data for utf8 string %v", err)
-			}
-
+			inner := io.LimitReader(src, int64(l))
+			reader := bufio.NewReader(inner)
 			var sb strings.Builder
 			for uint(sb.Len()) < l {
-				r, _ := utf8.DecodeRune(outByte[sb.Len():])
-				if r == utf8.RuneError {
+				r, _, err := reader.ReadRune()
+				if r == utf8.RuneError || err != nil {
 					return data, 0, fmt.Errorf("byte slice contain invalid UTF-8 runes")
 				}
 				sb.WriteRune(r)
@@ -218,71 +209,71 @@ func (al *dlmsal) decodeData(src io.Reader, tag dataTag) (data DlmsData, c int, 
 		}
 	case TagBCD:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:1])
+			_, err = io.ReadFull(src, tmpbuffer[:1])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for bcd %v", err)
 			}
-			v := int(al.tmpbuffer[0]&0xf) + 10*(int(al.tmpbuffer[0]>>4)&7)
-			if (al.tmpbuffer[0] & 0x80) != 0 {
+			v := int(tmpbuffer[0]&0xf) + 10*(int(tmpbuffer[0]>>4)&7)
+			if (tmpbuffer[0] & 0x80) != 0 {
 				v = -v
 			}
 			return DlmsData{Tag: tag, Value: int8(v)}, 1, nil
 		}
 	case TagInteger:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:1])
+			_, err = io.ReadFull(src, tmpbuffer[:1])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for integer %v", err)
 			}
-			v := int8(al.tmpbuffer[0])
+			v := int8(tmpbuffer[0])
 			return DlmsData{Tag: tag, Value: v}, 1, nil
 		}
 	case TagLong:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:2])
+			_, err = io.ReadFull(src, tmpbuffer[:2])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for long %v", err)
 			}
-			v := int16(al.tmpbuffer[0])<<8 | int16(al.tmpbuffer[1])
+			v := int16(tmpbuffer[0])<<8 | int16(tmpbuffer[1])
 			return DlmsData{Tag: tag, Value: v}, 2, nil
 		}
 	case TagUnsigned:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:1])
+			_, err = io.ReadFull(src, tmpbuffer[:1])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for unsigned %v", err)
 			}
-			v := uint8(al.tmpbuffer[0])
+			v := uint8(tmpbuffer[0])
 			return DlmsData{Tag: tag, Value: v}, 1, nil
 		}
 	case TagLongUnsigned:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:2])
+			_, err = io.ReadFull(src, tmpbuffer[:2])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for long unsigned %v", err)
 			}
-			v := uint16(al.tmpbuffer[0])<<8 | uint16(al.tmpbuffer[1])
+			v := uint16(tmpbuffer[0])<<8 | uint16(tmpbuffer[1])
 			return DlmsData{Tag: tag, Value: v}, 2, nil
 		}
 	case TagCompactArray:
 		{
-			n, err := io.ReadFull(src, al.tmpbuffer[:1])
+			n, err := io.ReadFull(src, tmpbuffer[:1])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for compact array %v", err)
 			}
-			ctag := dataTag(al.tmpbuffer[0])
+			ctag := dataTag(tmpbuffer[0])
 			var types []dataTag
 			if ctag == TagStructure { // determine structure items types
-				l, c, err := decodelength(src, al.tmpbuffer)
+				l, c, err := decodelength(src, tmpbuffer)
 				if err != nil {
 					return data, 0, err
 				}
 				n += c
 				var tmp []byte
-				if uint(len(al.tmpbuffer)) < l {
+				if uint(len(tmpbuffer)) < l {
 					tmp = make([]byte, l)
 				} else {
-					tmp = al.tmpbuffer[:l]
+					tmp = tmpbuffer[:l]
 				}
 				_, err = io.ReadFull(src, tmp)
 				if err != nil {
@@ -302,7 +293,7 @@ func (al *dlmsal) decodeData(src io.Reader, tag dataTag) (data DlmsData, c int, 
 			}
 
 			// length in bytes, then slice it and traverse through slice till there is something left
-			l, c, err := decodelength(src, al.tmpbuffer)
+			l, c, err := decodelength(src, tmpbuffer)
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for compact array (length) %v", err)
 			}
@@ -324,15 +315,9 @@ func (al *dlmsal) decodeData(src io.Reader, tag dataTag) (data DlmsData, c int, 
 			}
 
 			// ok, this type is a bit shit, do that in memory fucked up way, otherwise i have to return consumbed bytes, so maybe next refactor, this type is not widely used anyway...
-			cont := make([]byte, l)
-			_, err = io.ReadFull(src, cont)
-			if err != nil {
-				return data, 0, fmt.Errorf("too short data for compact array %v", err)
-			}
-			n += int(l)
-			cntstr := bytes.NewBuffer(cont)
-
-			rem := len(cont)
+			cntstr := io.LimitReader(src, int64(l))
+			rem := int(l)
+			n += rem
 			items := make([]DlmsData, 0, 100) // maybe too much
 			for rem > 0 {
 				if ctag == TagStructure { // artifical structure with len(types) items
@@ -341,7 +326,7 @@ func (al *dlmsal) decodeData(src io.Reader, tag dataTag) (data DlmsData, c int, 
 						if rem <= 0 {
 							return data, 0, fmt.Errorf("there are no bytes left for another structure item")
 						}
-						str[i], c, err = al.decodeData(cntstr, types[i])
+						str[i], c, err = decodeData(cntstr, types[i], tmpbuffer)
 						if err != nil {
 							return data, 0, err
 						}
@@ -349,7 +334,7 @@ func (al *dlmsal) decodeData(src io.Reader, tag dataTag) (data DlmsData, c int, 
 					}
 					items = append(items, DlmsData{Tag: TagStructure, Value: str})
 				} else {
-					data, c, err := al.decodeData(cntstr, ctag)
+					data, c, err := decodeData(cntstr, ctag, tmpbuffer)
 					if err != nil {
 						return data, 0, err
 					}
@@ -357,106 +342,104 @@ func (al *dlmsal) decodeData(src io.Reader, tag dataTag) (data DlmsData, c int, 
 					items = append(items, data)
 				}
 			}
-			toret := DlmsCompactArray{Tag: ctag, Value: items}
+			toret := DlmsCompactArray{tag: ctag, value: items}
 			if ctag == TagStructure {
-				toret.Tags = types
+				toret.tags = types
 			}
 			return DlmsData{Tag: tag, Value: toret}, n, nil
 		}
 	case TagLong64:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:8])
+			_, err = io.ReadFull(src, tmpbuffer[:8])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for long64 %v", err)
 			}
-			v := int64(al.tmpbuffer[0])<<56 | int64(al.tmpbuffer[1])<<48 | int64(al.tmpbuffer[2])<<40 | int64(al.tmpbuffer[3])<<32 | int64(al.tmpbuffer[4])<<24 | int64(al.tmpbuffer[5])<<16 | int64(al.tmpbuffer[6])<<8 | int64(al.tmpbuffer[7])
+			v := int64(tmpbuffer[0])<<56 | int64(tmpbuffer[1])<<48 | int64(tmpbuffer[2])<<40 | int64(tmpbuffer[3])<<32 | int64(tmpbuffer[4])<<24 | int64(tmpbuffer[5])<<16 | int64(tmpbuffer[6])<<8 | int64(tmpbuffer[7])
 			return DlmsData{Tag: tag, Value: v}, 8, nil
 		}
 	case TagLong64Unsigned:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:8])
+			_, err = io.ReadFull(src, tmpbuffer[:8])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for long64 unsigned %v", err)
 			}
-			v := uint64(al.tmpbuffer[0])<<56 | uint64(al.tmpbuffer[1])<<48 | uint64(al.tmpbuffer[2])<<40 | uint64(al.tmpbuffer[3])<<32 | uint64(al.tmpbuffer[4])<<24 | uint64(al.tmpbuffer[5])<<16 | uint64(al.tmpbuffer[6])<<8 | uint64(al.tmpbuffer[7])
+			v := uint64(tmpbuffer[0])<<56 | uint64(tmpbuffer[1])<<48 | uint64(tmpbuffer[2])<<40 | uint64(tmpbuffer[3])<<32 | uint64(tmpbuffer[4])<<24 | uint64(tmpbuffer[5])<<16 | uint64(tmpbuffer[6])<<8 | uint64(tmpbuffer[7])
 			return DlmsData{Tag: tag, Value: v}, 8, nil
 		}
 	case TagEnum:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:1])
+			_, err = io.ReadFull(src, tmpbuffer[:1])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for enum %v", err)
 			}
-			v := uint8(al.tmpbuffer[0])
+			v := uint8(tmpbuffer[0])
 			return DlmsData{Tag: tag, Value: v}, 1, nil
 		}
 	case TagFloat32:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:4])
+			_, err = io.ReadFull(src, tmpbuffer[:4])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for float32 %v", err)
 			}
-			v := math.Float32frombits(binary.BigEndian.Uint32(al.tmpbuffer[:4]))
-			return DlmsData{Tag: tag, Value: v}, 4, nil
+			return DlmsData{Tag: tag, Value: math.Float32frombits(binary.BigEndian.Uint32(tmpbuffer[:4]))}, 4, nil
 		}
 	case TagFloat64:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:8])
+			_, err = io.ReadFull(src, tmpbuffer[:8])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for float64 %v", err)
 			}
-			v := math.Float64frombits(binary.BigEndian.Uint64(al.tmpbuffer[:8]))
-			return DlmsData{Tag: tag, Value: v}, 8, nil
+			return DlmsData{Tag: tag, Value: math.Float64frombits(binary.BigEndian.Uint64(tmpbuffer[:8]))}, 8, nil
 		}
 	case TagDateTime:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:12])
+			_, err = io.ReadFull(src, tmpbuffer[:12])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for datetime %v", err)
 			}
 			v := DlmsDateTime{
 				Date: DlmsDate{
-					Year:      uint16(al.tmpbuffer[0])<<8 | uint16(al.tmpbuffer[1]),
-					Month:     al.tmpbuffer[2],
-					Day:       al.tmpbuffer[3],
-					DayOfWeek: al.tmpbuffer[4],
+					Year:      uint16(tmpbuffer[0])<<8 | uint16(tmpbuffer[1]),
+					Month:     tmpbuffer[2],
+					Day:       tmpbuffer[3],
+					DayOfWeek: tmpbuffer[4],
 				},
 				Time: DlmsTime{
-					Hour:       al.tmpbuffer[5],
-					Minute:     al.tmpbuffer[6],
-					Second:     al.tmpbuffer[7],
-					Hundredths: al.tmpbuffer[8],
+					Hour:       tmpbuffer[5],
+					Minute:     tmpbuffer[6],
+					Second:     tmpbuffer[7],
+					Hundredths: tmpbuffer[8],
 				},
-				Deviation: int16(al.tmpbuffer[9])<<8 | int16(al.tmpbuffer[10]), // signed
-				Status:    al.tmpbuffer[11],
+				Deviation: int16(tmpbuffer[9])<<8 | int16(tmpbuffer[10]), // signed
+				Status:    tmpbuffer[11],
 			}
 			return DlmsData{Tag: tag, Value: v}, 12, nil
 		}
 	case TagDate:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:5])
+			_, err = io.ReadFull(src, tmpbuffer[:5])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for date %v", err)
 			}
 			v := DlmsDate{
-				Year:      uint16(al.tmpbuffer[0])<<8 | uint16(al.tmpbuffer[1]),
-				Month:     al.tmpbuffer[2],
-				Day:       al.tmpbuffer[3],
-				DayOfWeek: al.tmpbuffer[4],
+				Year:      uint16(tmpbuffer[0])<<8 | uint16(tmpbuffer[1]),
+				Month:     tmpbuffer[2],
+				Day:       tmpbuffer[3],
+				DayOfWeek: tmpbuffer[4],
 			}
 			return DlmsData{Tag: tag, Value: v}, 5, nil
 		}
 	case TagTime:
 		{
-			_, err = io.ReadFull(src, al.tmpbuffer[:4])
+			_, err = io.ReadFull(src, tmpbuffer[:4])
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for time %v", err)
 			}
 			v := DlmsTime{
-				Hour:       al.tmpbuffer[0],
-				Minute:     al.tmpbuffer[1],
-				Second:     al.tmpbuffer[2],
-				Hundredths: al.tmpbuffer[3],
+				Hour:       tmpbuffer[0],
+				Minute:     tmpbuffer[1],
+				Second:     tmpbuffer[2],
+				Hundredths: tmpbuffer[3],
 			}
 			return DlmsData{Tag: tag, Value: v}, 4, nil
 		}
@@ -584,46 +567,46 @@ func encodeCompactArray(out *bytes.Buffer, d *DlmsData) (err error) {
 	default:
 		return fmt.Errorf("unsupported data type for compact array: %T", d.Value)
 	}
-	if input.Tag == TagStructure && input.Tags == nil {
+	if input.tag == TagStructure && input.tags == nil {
 		return fmt.Errorf("no structure tags provided")
 	}
 
 	// well... shit, all things has to have the same type and in case of structure, this could be fun, in case of zero items, well... fuck, special structure for this?
-	if len(input.Value) == 0 { // nothing, so not interesting in anything, encopde it as a zero empty structures
-		out.WriteByte(byte(input.Tag))
-		if input.Tag == TagStructure {
-			encodelength(out, uint(len(input.Tags)))
-			for _, tt := range input.Tags {
+	if len(input.value) == 0 { // nothing, so not interesting in anything, encopde it as a zero empty structures
+		out.WriteByte(byte(input.tag))
+		if input.tag == TagStructure {
+			encodelength(out, uint(len(input.tags)))
+			for _, tt := range input.tags {
 				out.WriteByte(byte(tt))
 			}
 		}
 		out.WriteByte(0) // zero bytes, this is very questionable, at least not so used data type, things for some future
 	}
-	for _, t := range input.Value {
-		if t.Tag != input.Tag {
+	for _, t := range input.value {
+		if t.Tag != input.tag {
 			return fmt.Errorf("data tag differs, unable to perform encoding compact array")
 		}
-		if input.Tag == TagStructure {
+		if input.tag == TagStructure {
 			tmp, err := getstructuretypes(&t)
 			if err != nil {
 				return err
 			}
-			if len(tmp) != len(input.Tags) {
+			if len(tmp) != len(input.tags) {
 				return fmt.Errorf("inner structure differs")
 			}
 			for ii, jj := range tmp {
-				if jj != input.Tags[ii] {
+				if jj != input.tags[ii] {
 					return fmt.Errorf("inner structure differs")
 				}
 			}
 		}
 	}
 
-	if input.Tag == TagNull || len(input.Tags) == 0 {
+	if input.tag == TagNull || len(input.tags) == 0 {
 		return fmt.Errorf("unable to encode compact array with null tag")
 	}
 	on := true
-	for _, ty := range input.Tags {
+	for _, ty := range input.tags {
 		if ty != TagNull {
 			on = false
 		}
@@ -633,24 +616,24 @@ func encodeCompactArray(out *bytes.Buffer, d *DlmsData) (err error) {
 	}
 
 	// ok, having everything, encode that shit, really clusterfuck thing
-	out.WriteByte(byte(input.Tag))
-	if input.Tag == TagStructure {
-		encodelength(out, uint(len(input.Tags)))
-		for _, tt := range input.Tags {
+	out.WriteByte(byte(input.tag))
+	if input.tag == TagStructure {
+		encodelength(out, uint(len(input.tags)))
+		for _, tt := range input.tags {
 			out.WriteByte(byte(tt))
 		}
 	}
 	// ok, create internal buffer, encode shits, determine size and put that together
 	var internal bytes.Buffer
-	if input.Tag == TagStructure { // shit shit shit
-		for _, dd := range input.Value {
+	if input.tag == TagStructure { // shit shit shit
+		for _, dd := range input.value {
 			err = encodeStructureWithoutTags(&internal, &dd)
 			if err != nil {
 				return err
 			}
 		}
 	} else {
-		for _, dd := range input.Value {
+		for _, dd := range input.value {
 			err = encodeDatanoTag(&internal, &dd)
 			if err != nil {
 				return err

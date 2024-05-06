@@ -168,27 +168,31 @@ func (t *tcp) Read(p []byte) (n int, err error) {
 
 	t.setcommdeadline()
 	rx, err := t.conn.Read(t.buffer)
-	if err != nil {
-		return 0, err
-	}
-	if t.logger != nil {
-		t.logger.Debugf("RX (%s): %6d %s", t.hostname, rx, encodeHexString(t.buffer[:rx]))
-	}
-	if rx == 0 {
-		return 0, io.EOF
-	}
 	t.totalincoming += int64(rx)
 	t.currentincoming += int64(rx)
 	if t.maxincoming > 0 && t.currentincoming > t.maxincoming {
 		return 0, fmt.Errorf("received more than allowed")
 	}
 
-	t.read = rx
-	if n > rx {
-		n = rx
+	if rx > 0 {
+		t.read = rx
+		if n > rx {
+			n = rx
+		}
+		copy(p, t.buffer[:n])
+		t.offset = n
+
+		if t.logger != nil {
+			t.logger.Debugf("RX (%s): %6d %s", t.hostname, rx, encodeHexString(t.buffer[:rx]))
+		}
 	}
-	copy(p, t.buffer[:n])
-	t.offset = n
+
+	if err != nil {
+		return 0, err
+	}
+	if rx == 0 { // this is a bit questionable
+		return 0, io.EOF
+	}
 	return
 }
 

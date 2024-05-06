@@ -64,7 +64,7 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 		}
 		switch d.tmpbuffer[0] {
 		case 0:
-			ret[i], _, err = d.decodeDataTag(d.transport)
+			ret[i], _, err = decodeDataTag(d.transport, d.tmpbuffer)
 			if err != nil {
 				return nil, err
 			}
@@ -73,11 +73,78 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 			if err != nil {
 				return nil, err
 			}
-			ret[i] = DlmsData{Tag: TagError, Value: DlmsError{Result: AccessResultTag(d.tmpbuffer[0])}}
+			ret[i] = NewDlmsDataError(DlmsError{Result: AccessResultTag(d.tmpbuffer[0])})
 		default:
 			return nil, fmt.Errorf("unexpected response tag: %x", d.tmpbuffer[0])
 		}
 	}
 
 	return ret, nil
+}
+
+func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error) {
+	if !d.isopen {
+		return nil, nil, fmt.Errorf("connection is not open")
+	}
+
+	local := &d.pdu
+	// format request into byte slice and send that to unit
+	local.Reset()
+	local.WriteByte(byte(TagReadRequest))
+	encodelength(local, 1)
+	if item.HasAccess {
+		local.WriteByte(4)
+		local.WriteByte(byte(item.Address >> 8))
+		local.WriteByte(byte(item.Address))
+		local.WriteByte(item.AccessDescriptor)
+		err := encodeData(local, item.AccessData)
+		if err != nil {
+			return nil, nil, err
+		}
+	} else {
+		local.WriteByte(2)
+		local.WriteByte(byte(item.Address >> 8))
+		local.WriteByte(byte(item.Address))
+	}
+
+	err := d.transport.Write(local.Bytes())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	_, err = io.ReadFull(d.transport, d.tmpbuffer[:1])
+	if err != nil {
+		return nil, nil, err
+	}
+	if d.tmpbuffer[0] != byte(TagReadResponse) {
+		return nil, nil, fmt.Errorf("unexpected tag: %x", d.tmpbuffer[0])
+	}
+	l, _, err := decodelength(d.transport, d.tmpbuffer)
+	if err != nil {
+		return nil, nil, err
+	}
+	if l != 1 {
+		return nil, nil, fmt.Errorf("only one item was expected")
+	}
+
+	_, err = io.ReadFull(d.transport, d.tmpbuffer[:1])
+	if err != nil {
+		return nil, nil, err
+	}
+	switch d.tmpbuffer[0] {
+	case 0:
+		str, err := newDataStream(d.transport, inmem, d.logger)
+		if err != nil {
+			return nil, nil, err
+		}
+		return str, nil, nil
+	case 1:
+		_, err = io.ReadFull(d.transport, d.tmpbuffer[:1])
+		if err != nil {
+			return nil, nil, err
+		}
+		return nil, &DlmsError{Result: AccessResultTag(d.tmpbuffer[0])}, nil
+	}
+
+	return nil, nil, fmt.Errorf("unexpected response tag: %x", d.tmpbuffer[0])
 }

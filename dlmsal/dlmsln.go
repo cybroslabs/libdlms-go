@@ -22,8 +22,8 @@ func (ln *dlmsalget) get(items []DlmsLNRequestItem) ([]DlmsData, error) {
 	if len(items) == 0 {
 		return nil, fmt.Errorf("no items to read")
 	}
-
-	local := &ln.base.pdu
+	base := ln.base
+	local := &base.pdu
 	local.Reset()
 	local.WriteByte(byte(TagGetRequest))
 	if len(items) > 1 {
@@ -31,8 +31,8 @@ func (ln *dlmsalget) get(items []DlmsLNRequestItem) ([]DlmsData, error) {
 	} else {
 		local.WriteByte(byte(TagGetRequestNormal))
 	}
-	ln.base.invokeid = (ln.base.invokeid + 1) & 7
-	local.WriteByte(ln.base.invokeid | ln.base.settings.HighPriority | ln.base.settings.ConfirmedRequests)
+	base.invokeid = (base.invokeid + 1) & 7
+	local.WriteByte(base.invokeid | base.settings.HighPriority | base.settings.ConfirmedRequests)
 
 	if len(items) > 1 {
 		encodelength(local, uint(len(items)))
@@ -60,12 +60,12 @@ func (ln *dlmsalget) get(items []DlmsLNRequestItem) ([]DlmsData, error) {
 		}
 	}
 
-	if local.Len() > ln.base.maxPduSendSize {
-		return nil, fmt.Errorf("PDU size exceeds maximum size: %v > %v", local.Len(), ln.base.maxPduSendSize)
+	if local.Len() > base.maxPduSendSize {
+		return nil, fmt.Errorf("PDU size exceeds maximum size: %v > %v", local.Len(), base.maxPduSendSize)
 	}
 
 	// send itself, that could be fun, do that in one step for now
-	err := ln.base.transport.Write(local.Bytes())
+	err := base.transport.Write(local.Bytes())
 	if err != nil {
 		return nil, err
 	}
@@ -85,56 +85,155 @@ func (ln *dlmsalget) get(items []DlmsLNRequestItem) ([]DlmsData, error) {
 	return ln.data, nil
 }
 
+func (ln *dlmsalget) getstream(item DlmsLNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error) {
+	base := ln.base
+	local := &base.pdu
+	local.Reset()
+	local.WriteByte(byte(TagGetRequest))
+	local.WriteByte(byte(TagGetRequestNormal))
+	base.invokeid = (base.invokeid + 1) & 7
+	local.WriteByte(base.invokeid | base.settings.HighPriority | base.settings.ConfirmedRequests)
+
+	local.WriteByte(byte(item.ClassId >> 8))
+	local.WriteByte(byte(item.ClassId))
+	local.WriteByte(item.Obis.A)
+	local.WriteByte(item.Obis.B)
+	local.WriteByte(item.Obis.C)
+	local.WriteByte(item.Obis.D)
+	local.WriteByte(item.Obis.E)
+	local.WriteByte(item.Obis.F)
+	local.WriteByte(byte(item.Attribute))
+	if item.HasAccess {
+		local.WriteByte(1)
+		local.WriteByte(item.AccessDescriptor)
+		err := encodeData(local, item.AccessData)
+		if err != nil {
+			return nil, nil, fmt.Errorf("unable to encode data: %v", err)
+		}
+	} else {
+		local.WriteByte(0)
+	}
+
+	if local.Len() > base.maxPduSendSize {
+		return nil, nil, fmt.Errorf("PDU size exceeds maximum size: %v > %v", local.Len(), base.maxPduSendSize)
+	}
+
+	// send itself, that could be fun, do that in one step for now
+	err := base.transport.Write(local.Bytes())
+	if err != nil {
+		return nil, nil, err
+	}
+	return ln.getstreamdata(inmem)
+}
+
+func (ln *dlmsalget) getstreamdata(inmem bool) (s DlmsDataStream, e *DlmsError, err error) {
+	base := ln.base
+	_, err = io.ReadFull(base.transport, base.tmpbuffer[:1])
+	if err != nil {
+		return nil, nil, err
+	}
+	switch CosemTag(base.tmpbuffer[0]) {
+	case TagGetResponse:
+	case TagExceptionResponse: // no lower layer readout
+		return nil, &DlmsError{Result: TagAccOtherReason}, nil // dont decode exception pdu, TODO !!!
+	default:
+		return nil, nil, fmt.Errorf("unexpected tag: %x", base.tmpbuffer[0])
+	}
+	_, err = io.ReadFull(base.transport, base.tmpbuffer[:2])
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if base.tmpbuffer[1]&7 != base.invokeid {
+		return nil, nil, fmt.Errorf("unexpected invoke id")
+	}
+
+	switch getResponseTag(base.tmpbuffer[0]) {
+	case TagGetResponseNormal:
+		// decode data themselves
+		_, err = io.ReadFull(base.transport, base.tmpbuffer[:1])
+		if err != nil {
+			return nil, nil, err
+		}
+
+		if base.tmpbuffer[0] != 0 {
+			_, err = io.ReadFull(base.transport, base.tmpbuffer[:1])
+			if err == io.ErrUnexpectedEOF {
+				return nil, &DlmsError{Result: TagAccOtherReason}, nil // this kind of data cant be decoded, so that is why
+			} else {
+				if err != nil {
+					return nil, nil, err
+				}
+			}
+			return nil, &DlmsError{Result: AccessResultTag(base.tmpbuffer[0])}, nil
+		}
+		str, err := newDataStream(base.transport, inmem, base.logger)
+		if err != nil {
+			return nil, nil, err
+		}
+		return str, nil, nil
+	case TagGetResponseWithDataBlock: // this is a bit of hell, read till eof from lower layer and then ask for next block and so on
+		ln.state = 1
+		str, err := newDataStream(ln, inmem, base.logger)
+		if err != nil {
+			return nil, nil, err
+		}
+		return str, nil, nil
+	}
+	return nil, nil, fmt.Errorf("unexpected response tag: %x", base.tmpbuffer[0])
+}
+
 func (ln *dlmsalget) getnextdata(i int) (cont bool, err error) {
+	base := ln.base
 	switch ln.state {
 	case 0: // read first things as a response
-		_, err = io.ReadFull(ln.base.transport, ln.base.tmpbuffer[:1])
+		_, err = io.ReadFull(base.transport, base.tmpbuffer[:1])
 		if err != nil {
 			return false, err
 		}
-		switch CosemTag(ln.base.tmpbuffer[0]) {
+		switch CosemTag(base.tmpbuffer[0]) {
 		case TagGetResponse:
 		case TagExceptionResponse: // no lower layer readout
 			for i := 0; i < len(ln.data); i++ {
-				ln.data[i] = DlmsData{Tag: TagError, Value: DlmsError{Result: TagAccOtherReason}} // dont decode exception pdu
+				ln.data[i] = NewDlmsDataError(DlmsError{Result: TagAccOtherReason}) // dont decode exception pdu
 			}
 			ln.state = 100
 			return true, nil
 		default:
-			return false, fmt.Errorf("unexpected tag: %x", ln.base.tmpbuffer[0])
+			return false, fmt.Errorf("unexpected tag: %x", base.tmpbuffer[0])
 		}
-		_, err = io.ReadFull(ln.base.transport, ln.base.tmpbuffer[:2])
+		_, err = io.ReadFull(base.transport, base.tmpbuffer[:2])
 		if err != nil {
 			return false, err
 		}
 
-		if ln.base.tmpbuffer[1]&7 != ln.base.invokeid {
+		if base.tmpbuffer[1]&7 != base.invokeid {
 			return false, fmt.Errorf("unexpected invoke id")
 		}
 
-		switch getResponseTag(ln.base.tmpbuffer[0]) {
+		switch getResponseTag(base.tmpbuffer[0]) {
 		case TagGetResponseNormal:
 			if len(ln.data) > 1 {
 				return false, fmt.Errorf("expecting list response")
 			}
 			// decode data themselves
-			_, err = io.ReadFull(ln.base.transport, ln.base.tmpbuffer[:1])
+			_, err = io.ReadFull(base.transport, base.tmpbuffer[:1])
 			if err != nil {
 				return false, err
 			}
 
-			if ln.base.tmpbuffer[0] != 0 {
-				_, err = io.ReadFull(ln.base.transport, ln.base.tmpbuffer[:1])
+			if base.tmpbuffer[0] != 0 {
+				_, err = io.ReadFull(base.transport, base.tmpbuffer[:1])
 				if err == io.ErrUnexpectedEOF {
-					ln.data[i] = DlmsData{Tag: TagError, Value: DlmsError{Result: TagAccOtherReason}} // this kind of data cant be decoded, so that is why
+					ln.data[i] = NewDlmsDataError(DlmsError{Result: TagAccOtherReason}) // this kind of data cant be decoded, so that is why
 				} else {
 					if err != nil {
 						return false, err
 					}
 				}
-				ln.data[i] = DlmsData{Tag: TagError, Value: DlmsError{Result: AccessResultTag(ln.base.tmpbuffer[0])}}
+				ln.data[i] = NewDlmsDataError(DlmsError{Result: AccessResultTag(base.tmpbuffer[0])})
 			} else {
-				ln.data[i], _, err = ln.base.decodeDataTag(ln.base.transport)
+				ln.data[i], _, err = decodeDataTag(base.transport, base.tmpbuffer)
 				if err != nil {
 					return false, err
 				}
@@ -144,7 +243,7 @@ func (ln *dlmsalget) getnextdata(i int) (cont bool, err error) {
 			if len(ln.data) == 1 {
 				return false, fmt.Errorf("expecting normal response")
 			}
-			l, _, err := decodelength(ln.base.transport, ln.base.tmpbuffer)
+			l, _, err := decodelength(base.transport, base.tmpbuffer)
 			if err != nil {
 				return false, err
 			}
@@ -152,18 +251,18 @@ func (ln *dlmsalget) getnextdata(i int) (cont bool, err error) {
 				return false, fmt.Errorf("different amount of data received")
 			}
 			for i := 0; i < len(ln.data); i++ {
-				_, err = io.ReadFull(ln.base.transport, ln.base.tmpbuffer[:1])
+				_, err = io.ReadFull(base.transport, base.tmpbuffer[:1])
 				if err != nil {
 					return false, err
 				}
-				if ln.base.tmpbuffer[0] != 0 {
-					_, err = io.ReadFull(ln.base.transport, ln.base.tmpbuffer[:1])
+				if base.tmpbuffer[0] != 0 {
+					_, err = io.ReadFull(base.transport, base.tmpbuffer[:1])
 					if err != nil {
 						return false, err
 					}
-					ln.data[i] = DlmsData{Tag: TagError, Value: DlmsError{Result: AccessResultTag(ln.base.tmpbuffer[0])}}
+					ln.data[i] = NewDlmsDataError(DlmsError{Result: AccessResultTag(base.tmpbuffer[0])})
 				} else {
-					ln.data[i], _, err = ln.base.decodeDataTag(ln.base.transport)
+					ln.data[i], _, err = decodeDataTag(base.transport, base.tmpbuffer)
 					if err != nil {
 						return false, err
 					}
@@ -174,7 +273,7 @@ func (ln *dlmsalget) getnextdata(i int) (cont bool, err error) {
 		case TagGetResponseWithDataBlock: // this is a bit of hell, read till eof from lower layer and then ask for next block and so on
 			ln.state = 1
 			if len(ln.data) == 1 {
-				ln.data[i], _, err = ln.base.decodeDataTag(ln)
+				ln.data[i], _, err = decodeDataTag(ln, base.tmpbuffer)
 			} else { // with list, so read first byte to decide if there is an error and result byte or decode data
 				err = ln.decodedata(i)
 			}
@@ -182,7 +281,7 @@ func (ln *dlmsalget) getnextdata(i int) (cont bool, err error) {
 				return false, err
 			}
 		default:
-			return false, fmt.Errorf("unexpected response tag: %x", ln.base.tmpbuffer[0])
+			return false, fmt.Errorf("unexpected response tag: %x", base.tmpbuffer[0])
 		}
 	case 2: // block content
 		err = ln.decodedata(i)
@@ -196,18 +295,19 @@ func (ln *dlmsalget) getnextdata(i int) (cont bool, err error) {
 }
 
 func (ln *dlmsalget) decodedata(i int) (err error) {
-	_, err = io.ReadFull(ln, ln.base.tmpbuffer[:1])
+	base := ln.base
+	_, err = io.ReadFull(ln, base.tmpbuffer[:1])
 	if err != nil {
 		return
 	}
-	if ln.base.tmpbuffer[0] != 0 {
-		_, err = io.ReadFull(ln, ln.base.tmpbuffer[:1])
+	if base.tmpbuffer[0] != 0 {
+		_, err = io.ReadFull(ln, base.tmpbuffer[:1])
 		if err != nil {
 			return
 		}
-		ln.data[i] = DlmsData{Tag: TagError, Value: DlmsError{Result: AccessResultTag(ln.base.tmpbuffer[0])}}
+		ln.data[i] = NewDlmsDataError(DlmsError{Result: AccessResultTag(base.tmpbuffer[0])})
 	} else {
-		ln.data[i], _, err = ln.base.decodeDataTag(ln)
+		ln.data[i], _, err = decodeDataTag(ln, base.tmpbuffer)
 	}
 	return
 }
@@ -216,19 +316,20 @@ func (ln *dlmsalget) Read(p []byte) (n int, err error) { // this will go to data
 	if len(p) == 0 { // that shouldnt happen
 		return 0, fmt.Errorf("no data to read")
 	}
+	base := ln.base
 	switch ln.state {
 	case 1: // read block header
-		_, err = io.ReadFull(ln.base.transport, ln.base.tmpbuffer[:6])
+		_, err = io.ReadFull(base.transport, base.tmpbuffer[:6])
 		if err != nil {
 			return
 		}
-		ln.lastblock = ln.base.tmpbuffer[0] != 0
-		if ln.base.tmpbuffer[5] != 0 {
-			return 0, fmt.Errorf("returned failed request, not handled, error: %v", ln.base.tmpbuffer[5])
+		ln.lastblock = base.tmpbuffer[0] != 0
+		if base.tmpbuffer[5] != 0 {
+			return 0, fmt.Errorf("returned failed request, not handled, error: %v", base.tmpbuffer[5])
 		}
-		blockno := (uint32(ln.base.tmpbuffer[1]) << 24) | (uint32(ln.base.tmpbuffer[2]) << 16) | (uint32(ln.base.tmpbuffer[3]) << 8) | uint32(ln.base.tmpbuffer[4])
+		blockno := (uint32(base.tmpbuffer[1]) << 24) | (uint32(base.tmpbuffer[2]) << 16) | (uint32(base.tmpbuffer[3]) << 8) | uint32(base.tmpbuffer[4])
 		ln.blockexp = blockno
-		ln.remaining, _, err = decodelength(ln.base.transport, ln.base.tmpbuffer) // refactor usage of these tmp buffers...
+		ln.remaining, _, err = decodelength(base.transport, base.tmpbuffer) // refactor usage of these tmp buffers...
 		if err != nil {
 			return 0, err
 		}
@@ -239,8 +340,8 @@ func (ln *dlmsalget) Read(p []byte) (n int, err error) { // this will go to data
 		if uint(len(p)) > ln.remaining {
 			p = p[:ln.remaining]
 		}
-		n, err = ln.base.transport.Read(p)
-		ln.remaining -= uint(n) // hiopefully this never returns negative value ;)
+		n, err = base.transport.Read(p)
+		ln.remaining -= uint(n) // hopefully this never returns negative value ;)
 		return n, err
 	case 2: // read block content
 		if ln.remaining == 0 { // next block please
@@ -248,35 +349,35 @@ func (ln *dlmsalget) Read(p []byte) (n int, err error) { // this will go to data
 				return 0, io.EOF // or some common error?
 			}
 			// ask for the next block
-			ln.base.tmpbuffer[0] = byte(TagGetRequest)
-			ln.base.tmpbuffer[1] = byte(TagGetRequestNext)
-			ln.base.tmpbuffer[2] = ln.base.invokeid | ln.base.settings.HighPriority | ln.base.settings.ConfirmedRequests
-			ln.base.tmpbuffer[3] = byte(ln.blockexp >> 24)
-			ln.base.tmpbuffer[4] = byte(ln.blockexp >> 16)
-			ln.base.tmpbuffer[5] = byte(ln.blockexp >> 8)
-			ln.base.tmpbuffer[6] = byte(ln.blockexp)
-			err = ln.base.transport.Write(ln.base.tmpbuffer[:7])
+			base.tmpbuffer[0] = byte(TagGetRequest)
+			base.tmpbuffer[1] = byte(TagGetRequestNext)
+			base.tmpbuffer[2] = base.invokeid | base.settings.HighPriority | base.settings.ConfirmedRequests
+			base.tmpbuffer[3] = byte(ln.blockexp >> 24)
+			base.tmpbuffer[4] = byte(ln.blockexp >> 16)
+			base.tmpbuffer[5] = byte(ln.blockexp >> 8)
+			base.tmpbuffer[6] = byte(ln.blockexp)
+			err = base.transport.Write(base.tmpbuffer[:7])
 			if err != nil {
 				return 0, err
 			}
-			_, err = io.ReadFull(ln.base.transport, ln.base.tmpbuffer[:9]) // read block answer header
+			_, err = io.ReadFull(base.transport, base.tmpbuffer[:9]) // read block answer header
 			if err != nil {
 				return 0, err
 			}
-			if ln.base.tmpbuffer[0] != byte(TagGetResponse) || ln.base.tmpbuffer[1] != byte(TagGetResponseWithDataBlock) || ln.base.tmpbuffer[2]&7 != ln.base.invokeid {
-				return 0, fmt.Errorf("unexpected response tag: %x", ln.base.tmpbuffer[1])
+			if base.tmpbuffer[0] != byte(TagGetResponse) || base.tmpbuffer[1] != byte(TagGetResponseWithDataBlock) || base.tmpbuffer[2]&7 != base.invokeid {
+				return 0, fmt.Errorf("unexpected response tag: %x", base.tmpbuffer[1])
 			}
 			// set last, check block number and set remaining
-			ln.lastblock = ln.base.tmpbuffer[3] != 0
-			if ln.base.tmpbuffer[8] != 0 {
-				return 0, fmt.Errorf("returned failed request, not handled, error: %v", ln.base.tmpbuffer[8])
+			ln.lastblock = base.tmpbuffer[3] != 0
+			if base.tmpbuffer[8] != 0 {
+				return 0, fmt.Errorf("returned failed request, not handled, error: %v", base.tmpbuffer[8])
 			}
 			ln.blockexp++
-			blockno := (uint32(ln.base.tmpbuffer[4]) << 24) | (uint32(ln.base.tmpbuffer[5]) << 16) | (uint32(ln.base.tmpbuffer[6]) << 8) | uint32(ln.base.tmpbuffer[7])
+			blockno := (uint32(base.tmpbuffer[4]) << 24) | (uint32(base.tmpbuffer[5]) << 16) | (uint32(base.tmpbuffer[6]) << 8) | uint32(base.tmpbuffer[7])
 			if ln.blockexp != blockno {
 				return 0, fmt.Errorf("unexpected block number")
 			}
-			ln.remaining, _, err = decodelength(ln.base.transport, ln.base.tmpbuffer) // refactor usage of these tmp buffers...
+			ln.remaining, _, err = decodelength(base.transport, base.tmpbuffer) // refactor usage of these tmp buffers...
 			if err != nil {
 				return 0, err
 			}
@@ -287,8 +388,8 @@ func (ln *dlmsalget) Read(p []byte) (n int, err error) { // this will go to data
 		if uint(len(p)) > ln.remaining {
 			p = p[:ln.remaining]
 		}
-		n, err = ln.base.transport.Read(p)
-		ln.remaining -= uint(n) // hiopefully this never returns negative value ;)
+		n, err = base.transport.Read(p)
+		ln.remaining -= uint(n) // hopefully this never returns negative value ;)
 		return n, err
 	default:
 		return 0, fmt.Errorf("program error, unexpected state: %v", ln.state)
@@ -298,4 +399,9 @@ func (ln *dlmsalget) Read(p []byte) (n int, err error) { // this will go to data
 func (d *dlmsal) Get(items []DlmsLNRequestItem) ([]DlmsData, error) {
 	ln := &dlmsalget{base: d, state: 0, blockexp: 0}
 	return ln.get(items)
+}
+
+func (d *dlmsal) GetStream(item DlmsLNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error) {
+	ln := &dlmsalget{base: d, state: 0, blockexp: 0}
+	return ln.getstream(item, inmem)
 }

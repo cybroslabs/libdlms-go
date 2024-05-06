@@ -79,13 +79,13 @@ func (w *wrapper) Write(src []byte) error {
 	// readout remaining bytes?
 	for w.remaining > 0 {
 		n, err := w.transport.Read(w.buffer)
+		w.remaining -= n
 		if err != nil {
 			return err
 		}
 		if n == 0 { // that shouldnt happen
 			return fmt.Errorf("no data read")
 		}
-		w.remaining -= n
 	}
 
 	if w.towrite == 0 {

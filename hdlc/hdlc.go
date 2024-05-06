@@ -35,8 +35,8 @@ type maclayer struct {
 	controlR       byte
 	tosend         int
 	state          int // 0 - start, 1 - writting, 2 - reading
-	packetsbuffer  []*macpacket
-	toberead       []*macpacket
+	packetsbuffer  []macpacket
+	toberead       []macpacket
 	tobereadpacket *macpacket
 	emptyframes    int
 	canwrite       bool // controling final/poll bit
@@ -93,7 +93,7 @@ func New(transport base.Stream, settings *Settings) (base.Stream, error) {
 		controlR:       0,
 		tosend:         0,
 		state:          0,
-		packetsbuffer:  make([]*macpacket, maxPackets),
+		packetsbuffer:  make([]macpacket, maxPackets),
 		toberead:       nil,
 		tobereadpacket: nil,
 		emptyframes:    0,
@@ -301,8 +301,7 @@ func (w *maclayer) IsOpen() bool {
 
 func (w *maclayer) getnextI() (pck *macpacket, err error) {
 	for len(w.toberead) > 0 {
-		pck = w.toberead[0]
-		w.toberead[0] = nil // clear reference
+		pck = &w.toberead[0]
 		w.toberead = w.toberead[1:]
 		if pck.control&1 == 0 { // I frame
 			if pck.control>>5 != w.controlS { // handling retransmittion here, that would be fun
@@ -509,6 +508,7 @@ func (w *maclayer) readout() error {
 	bcnt := maxReadoutBytes
 	for {
 		n, err := w.Read(w.sendbuffer)
+		bcnt -= n
 		if err == io.EOF {
 			w.tosend = 0
 			w.state = 1
@@ -517,7 +517,6 @@ func (w *maclayer) readout() error {
 		if err != nil {
 			return err
 		}
-		bcnt -= n
 		if bcnt <= 0 {
 			return fmt.Errorf("too many bytes read")
 		}
@@ -581,14 +580,15 @@ func mac_crc16(d []byte) uint16 {
 }
 
 // receive series of whole mac packets, no other way, from segmented tcp streaming, using rcvbuffer for first packet, extra memory for the rest
-func (w *maclayer) readpackets() ([]*macpacket, error) {
+func (w *maclayer) readpackets() ([]macpacket, error) {
 	if w.canwrite {
 		return nil, fmt.Errorf("cannot read packets, write is expected")
 	}
 
 	off := 0
 	first := true
-	for {
+	final := false
+	for !final {
 		if off >= len(w.packetsbuffer) {
 			return nil, fmt.Errorf("too many packets received")
 		}
@@ -597,15 +597,13 @@ func (w *maclayer) readpackets() ([]*macpacket, error) {
 			return nil, err
 		}
 		first = false
+		final = m.control&0x10 != 0
+		m.control &= 0xef // clear final bit
 		w.packetsbuffer[off] = m
 		off++
-
-		if m.control&0x10 != 0 { // final is set, so nothing should remain
-			m.control &^= 0x10 // clear final bit
-			w.canwrite = true
-			return w.packetsbuffer[:off], nil // everything is received, final is set, our turn now
-		}
 	}
+	w.canwrite = true
+	return w.packetsbuffer[:off], nil // everything is received, final is set, our turn now
 }
 
 func (w *maclayer) parseminheader() (uint, error) {
@@ -619,7 +617,7 @@ func (w *maclayer) parseminheader() (uint, error) {
 	return length - 2, nil
 }
 
-func (w *maclayer) readpacket(first bool) (pck *macpacket, err error) { // remove recursion and call it repeatedly from another caller and return array of packets
+func (w *maclayer) readpacket(first bool) (pck macpacket, err error) { // remove recursion and call it repeatedly from another caller and return array of packets
 	// 0 waiting for 0x7e and reading minimal header, 1 reading rest of the packet, 2 closing 0x7e (maybe not so necessary)
 	length := uint(0)
 	if first {
@@ -661,7 +659,7 @@ func (w *maclayer) readpacket(first bool) (pck *macpacket, err error) { // remov
 			}
 			bcnt += 3
 			if bcnt > maxBytesBefore7e {
-				return nil, fmt.Errorf("too many bytes before any 0x7e found")
+				return pck, fmt.Errorf("too many bytes before any 0x7e found")
 			}
 		}
 	} else { // no searching, there has to be either 0x7e or 0xa0
@@ -698,29 +696,29 @@ func (w *maclayer) readpacket(first bool) (pck *macpacket, err error) { // remov
 		return
 	}
 	if pckinfo[length+2] != 0x7e {
-		return nil, fmt.Errorf("there is no closing tag found")
+		return pck, fmt.Errorf("there is no closing tag found")
 	}
 	pckinfo[0] = w.recvbuffer[1] // min header
 	pckinfo[1] = w.recvbuffer[2]
 	return w.parsepacket(pckinfo[:length+2])
 }
 
-func (w *maclayer) parsepacket(ori []byte) (*macpacket, error) {
+func (w *maclayer) parsepacket(ori []byte) (pck macpacket, err error) {
 	if len(ori) < 6 {
-		return nil, fmt.Errorf("too short packet")
+		return pck, fmt.Errorf("too short packet")
 	}
 	// check HCS/FCS
 	fcs := mac_crc16(ori[:len(ori)-2])
 	if fcs != uint16(ori[len(ori)-2])|(uint16(ori[len(ori)-1])<<8) {
-		return nil, fmt.Errorf("fcs mismatch")
+		return pck, fmt.Errorf("fcs mismatch")
 	}
 
 	// check addresses
 	if ori[2]&1 == 0 {
-		return nil, fmt.Errorf("invalid ending bit of client address")
+		return pck, fmt.Errorf("invalid ending bit of client address")
 	}
 	if ori[2]>>1 != w.client {
-		return nil, fmt.Errorf("invalid client address")
+		return pck, fmt.Errorf("invalid client address")
 	}
 	offset := 0
 	var log uint16     // upper
@@ -734,11 +732,11 @@ func (w *maclayer) parsepacket(ori []byte) (*macpacket, error) {
 		phy = uint16(ori[4] >> 1)
 		offset = 2
 	} else if ori[5]&1 != 0 {
-		return nil, fmt.Errorf("invalid address field, premature termination bit")
+		return pck, fmt.Errorf("invalid address field, premature termination bit")
 	} else if len(ori) < 7 {
-		return nil, fmt.Errorf("too short packet for whole address")
+		return pck, fmt.Errorf("too short packet for whole address")
 	} else if ori[6]&1 == 0 {
-		return nil, fmt.Errorf("there is no termination bit in address field")
+		return pck, fmt.Errorf("there is no termination bit in address field")
 	} else {
 		log = uint16(ori[3]>>1)<<7 | uint16(ori[4]>>1)
 		phy = uint16(ori[5]>>1)<<7 | uint16(ori[6]>>1)
@@ -746,36 +744,37 @@ func (w *maclayer) parsepacket(ori []byte) (*macpacket, error) {
 	}
 
 	if log != w.logical {
-		return nil, fmt.Errorf("mismatch logical address")
+		return pck, fmt.Errorf("mismatch logical address")
 	}
 	if phy != w.physical {
-		return nil, fmt.Errorf("mismatch physical address")
+		return pck, fmt.Errorf("mismatch physical address")
 	}
 
 	if len(ori) < offset+6 {
-		return nil, fmt.Errorf("too short packet")
+		return pck, fmt.Errorf("too short packet")
 	}
 
 	offset += 3
-	pck := macpacket{segmented: ori[0]&8 != 0, control: ori[offset], info: nil}
+	pck.segmented = ori[0]&8 != 0
+	pck.control = ori[offset]
 	// now offset points to control byte, so determine packet type or something
 	rem := len(ori) - offset
 	switch {
 	case rem < 3:
-		return nil, fmt.Errorf("too short packet")
+		return pck, fmt.Errorf("too short packet")
 	case rem == 3: // just fcs and no info
-		return &pck, nil
+		return pck, nil
 	case rem == 4:
-		return nil, fmt.Errorf("invalid packet length")
+		return pck, fmt.Errorf("invalid packet length")
 	default: // having some info
 		fcs = mac_crc16(ori[:offset+1])
 		if fcs != uint16(ori[offset+1])|(uint16(ori[offset+2])<<8) {
-			return nil, fmt.Errorf("hcs mismatch")
+			return pck, fmt.Errorf("hcs mismatch")
 		}
 		pck.info = ori[offset+3 : len(ori)-2] // dont copy, keep slice so wasting memory for crc and header
 	}
 
-	return &pck, nil
+	return pck, nil
 }
 
 func (w *maclayer) getaddresslength() int {

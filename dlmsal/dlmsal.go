@@ -54,18 +54,20 @@ type DlmsClient interface {
 	Open() error
 	SetLogger(logger *zap.SugaredLogger)
 	Get(items []DlmsLNRequestItem) ([]DlmsData, error)
+	GetStream(item DlmsLNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error)
 	Read(items []DlmsSNRequestItem) ([]DlmsData, error)
+	ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error) // only for big single item queries
 }
 
 type dlmsal struct {
 	transport      base.Stream
 	logger         *zap.SugaredLogger
-	settings       *DlmsSettings
+	settings       DlmsSettings
 	isopen         bool
 	aareres        aareresponse
 	maxPduSendSize int
 
-	// things for communications
+	// things for communications/data parsing
 	invokeid  byte
 	buffer    []byte
 	tmpbuffer []byte
@@ -116,7 +118,7 @@ func New(transport base.Stream, settings *DlmsSettings) DlmsClient {
 	return &dlmsal{
 		transport: transport,
 		logger:    nil,
-		settings:  settings,
+		settings:  *settings,
 		isopen:    false,
 		invokeid:  0,
 		buffer:    make([]byte, 2048),
@@ -135,7 +137,7 @@ func (d *dlmsal) Close() error {
 		return nil
 	}
 
-	rl, err := encodeRLRQ(d.settings)
+	rl, err := encodeRLRQ(&d.settings)
 	if err != nil {
 		return err
 	}
@@ -169,13 +171,13 @@ func (d *dlmsal) smallreadout() ([]byte, error) {
 			return nil, fmt.Errorf("no room for aare or rlre")
 		}
 		n, err := d.transport.Read(d.buffer[total:])
+		total += n
 		if err == io.EOF {
 			return d.buffer[:total], nil
 		}
 		if err != nil {
 			return nil, err
 		}
-		total += n
 	}
 }
 
@@ -187,7 +189,7 @@ func (d *dlmsal) Open() error { // login and shits
 		return err
 	}
 
-	b, err := encodeaarq(d.settings)
+	b, err := encodeaarq(&d.settings)
 	if err != nil {
 		return err
 	}
@@ -244,7 +246,7 @@ func (d *dlmsal) Open() error { // login and shits
 		return fmt.Errorf("no initiate response, error probably")
 	}
 	d.maxPduSendSize = int(d.aareres.initiateResponse.ServerMaxReceivePduSize)
-	d.logf("Max PDU size: %v, Va: %v", d.maxPduSendSize, d.aareres.initiateResponse.VAAddress)
+	d.logf("Max PDU size: %v, Vaa: %v", d.maxPduSendSize, d.aareres.initiateResponse.VAAddress)
 
 	d.settings.VAAddress = d.aareres.initiateResponse.VAAddress // returning from interface, a bit hacky yes
 
