@@ -21,8 +21,9 @@ const (
 )
 
 type DlmsDataStreamItem struct {
-	Type streamItemType
-	Data DlmsData
+	Type  streamItemType
+	Count int
+	Data  DlmsData
 }
 
 type DlmsDataStream interface {
@@ -183,7 +184,7 @@ func (d *datastream) arrayElement(t dataTag) (*DlmsDataStreamItem, error) {
 		return nil, err
 	}
 	d.stack = append(d.stack, datastreamstate{items: int(l), element: t})
-	return &DlmsDataStreamItem{Type: StreamElementStart, Data: DlmsData{Tag: t, Value: int(l)}}, nil
+	return &DlmsDataStreamItem{Type: StreamElementStart, Count: int(l), Data: DlmsData{Tag: t}}, nil
 }
 
 func (d *datastream) Close() error { // artifically read out the rest
