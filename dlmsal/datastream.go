@@ -53,31 +53,75 @@ func (d *datachunked) rewind() {
 	d.offset = 0
 }
 
-func (d *datachunked) readfrom(src io.Reader) (err error) {
-	d.buffers = make([][]byte, 1)
-	d.buffers[0] = make([]byte, memchunksize)
-	l := 1
+func (d *datachunked) appendfrom(src io.Reader) (err error) {
+	var rem int
+	var l int
+	if len(d.buffers) == 0 {
+		d.buffers = make([][]byte, 1)
+		d.buffers[0] = make([]byte, memchunksize)
+		rem = memchunksize
+		l = 0
+	} else {
+		l = len(d.buffers) - 1
+		rem = cap(d.buffers[l]) - len(d.buffers[l])
+		if rem != 0 {
+			d.buffers[l] = d.buffers[l][:memchunksize]
+		}
+	}
 	var n int
-	off := 0
 	for {
-		n, err = src.Read(d.buffers[l-1][off:])
-		off += n
+		if rem == 0 { // i have to append something
+			d.buffers = append(d.buffers, make([]byte, memchunksize))
+			l++
+			rem = memchunksize
+		}
+		n, err = src.Read(d.buffers[l][memchunksize-rem:])
 		d.size += n
+		rem -= n
 		if err != nil {
+			d.buffers[l] = d.buffers[l][:memchunksize-rem]
 			if err == io.EOF {
-				d.buffers[l-1] = d.buffers[l-1][:off]
 				return nil
 			}
 			return err
 		}
 		if n == 0 {
+			d.buffers[l] = d.buffers[l][:memchunksize-rem]
 			return fmt.Errorf("no data read") // that shouldnt happen
 		}
-		if off == memchunksize {
-			d.buffers = append(d.buffers, make([]byte, memchunksize))
-			off = 0
+	}
+}
+
+func (d *datachunked) clear() {
+	if len(d.buffers) > 0 { // reuse the first chunk
+		d.buffers = d.buffers[:1]
+		d.buffers[0] = d.buffers[0][:0]
+	}
+	d.offset = 0
+	d.size = 0
+}
+
+func (d *datachunked) append(p []byte) { // always write everything, panic in case out of memory
+	var n int
+	if len(d.buffers) == 0 {
+		d.buffers = make([][]byte, 1)
+		d.buffers[0] = make([]byte, 0, memchunksize)
+		n = memchunksize
+	}
+	l := len(d.buffers) - 1
+	for len(p) > 0 {
+		n = cap(d.buffers[l]) - len(d.buffers[l])
+		if n == 0 {
+			d.buffers = append(d.buffers, make([]byte, 0, memchunksize))
 			l++
+			n = memchunksize
 		}
+		if n > len(p) {
+			n = len(p)
+		}
+		d.buffers[l] = append(d.buffers[l], p[:n]...)
+		d.size += n
+		p = p[n:]
 	}
 }
 
@@ -88,6 +132,10 @@ func (d *datachunked) Read(p []byte) (n int, err error) {
 	n = copy(p, d.buffers[d.offset>>memchunkbits][d.offset&(memchunksize-1):])
 	d.offset += n
 	return
+}
+
+func newdatachunked() *datachunked {
+	return &datachunked{offset: 0, size: 0}
 }
 
 type datastreamstate struct {
@@ -105,8 +153,8 @@ func newDataStream(src io.Reader, inmem bool, logger *zap.SugaredLogger) (DlmsDa
 		inmemory: inmem,
 	}
 	if inmem { // readout everything from src
-		ret.mem = &datachunked{offset: 0, size: 0}
-		err := ret.mem.readfrom(src)
+		ret.mem = newdatachunked()
+		err := ret.mem.appendfrom(src)
 		if err != nil {
 			return nil, err
 		}

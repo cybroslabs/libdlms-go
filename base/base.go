@@ -16,4 +16,5 @@ type Stream interface { // todo, make it a bit more streamable, so receive wante
 	SetMaxReceivedBytes(m int64) // every call resets current counter, exceeding bytes count means comm error, only incomming bytes are counted
 	Read(p []byte) (n int, err error)
 	Write(src []byte) error // always write everything
+	GetRxTxBytes() (int64, int64)
 }

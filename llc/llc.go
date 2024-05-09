@@ -82,6 +82,10 @@ func (l *llc) SetLogger(logger *zap.SugaredLogger) {
 	l.transport.SetLogger(logger)
 }
 
+func (l *llc) GetRxTxBytes() (int64, int64) {
+	return l.transport.GetRxTxBytes()
+}
+
 func New(transport base.Stream) base.Stream {
 	return &llc{
 		transport: transport,

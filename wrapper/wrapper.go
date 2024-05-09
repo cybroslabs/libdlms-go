@@ -166,3 +166,7 @@ func (w *wrapper) Read(p []byte) (n int, err error) {
 	w.remaining -= n
 	return
 }
+
+func (w *wrapper) GetRxTxBytes() (int64, int64) {
+	return w.transport.GetRxTxBytes()
+}

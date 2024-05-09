@@ -196,6 +196,10 @@ func (t *tcp) Read(p []byte) (n int, err error) {
 	return
 }
 
+func (t *tcp) GetRxTxBytes() (int64, int64) {
+	return t.totalincoming, t.totaloutgoing
+}
+
 func encodeHexString(b []byte) string {
 	return strings.ToUpper(hex.EncodeToString(b))
 }
