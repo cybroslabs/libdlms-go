@@ -63,7 +63,7 @@ type DlmsCompactArray struct {
 	value []DlmsData
 }
 
-func decodeDataTag(src io.Reader, tmpbuffer []byte) (data DlmsData, c int, err error) {
+func decodeDataTag(src io.Reader, tmpbuffer *tmpbuffer) (data DlmsData, c int, err error) {
 	_, err = io.ReadFull(src, tmpbuffer[:1])
 	if err != nil {
 		return
@@ -73,7 +73,7 @@ func decodeDataTag(src io.Reader, tmpbuffer []byte) (data DlmsData, c int, err e
 	return data, c + 1, err
 }
 
-func decodeDataArray(src io.Reader, tag dataTag, tmpbuffer []byte) (data DlmsData, c int, err error) {
+func decodeDataArray(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData, c int, err error) {
 	var ii int
 	l, c, err := decodelength(src, tmpbuffer)
 	if err != nil {
@@ -90,7 +90,7 @@ func decodeDataArray(src io.Reader, tag dataTag, tmpbuffer []byte) (data DlmsDat
 	return DlmsData{Tag: tag, Value: d}, c, nil
 }
 
-func decodeData(src io.Reader, tag dataTag, tmpbuffer []byte) (data DlmsData, c int, err error) {
+func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData, c int, err error) {
 	switch tag {
 	case TagNull:
 		return DlmsData{Tag: tag}, 0, nil

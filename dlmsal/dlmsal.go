@@ -50,7 +50,6 @@ type DlmsLNRequestItem struct {
 type DlmsClient interface {
 	Close() error
 	Disconnect() error
-	IsOpen() bool
 	Open() error
 	SetLogger(logger *zap.SugaredLogger)
 	Get(items []DlmsLNRequestItem) ([]DlmsData, error)
@@ -58,6 +57,8 @@ type DlmsClient interface {
 	Read(items []DlmsSNRequestItem) ([]DlmsData, error)
 	ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error) // only for big single item queries
 }
+
+type tmpbuffer [128]byte
 
 type dlmsal struct {
 	transport      base.Stream
@@ -70,7 +71,7 @@ type dlmsal struct {
 	// things for communications/data parsing
 	invokeid  byte
 	buffer    []byte
-	tmpbuffer []byte
+	tmpbuffer tmpbuffer
 	pdu       bytes.Buffer // reused for sending requests
 }
 
@@ -122,7 +123,6 @@ func New(transport base.Stream, settings *DlmsSettings) DlmsClient {
 		isopen:    false,
 		invokeid:  0,
 		buffer:    make([]byte, 2048),
-		tmpbuffer: make([]byte, 128), // temp storage for decoding length and so on, sure it could be allocated every time, but maximum possible reusable...
 	}
 }
 
@@ -157,10 +157,6 @@ func (d *dlmsal) Close() error {
 func (d *dlmsal) Disconnect() error {
 	d.isopen = false
 	return d.transport.Disconnect()
-}
-
-func (d *dlmsal) IsOpen() bool {
-	return d.isopen
 }
 
 func (d *dlmsal) smallreadout() ([]byte, error) {
@@ -202,14 +198,14 @@ func (d *dlmsal) Open() error { // login and shits
 		return fmt.Errorf("unable to receive snrm: %v", err)
 	}
 	// parse aare
-	tag, _, data, err := decodetag(aare, d.tmpbuffer)
+	tag, _, data, err := decodetag(aare, &d.tmpbuffer)
 	if err != nil {
 		return fmt.Errorf("unable to parse aare: %v", err)
 	}
 	if tag != byte(TagAARE) {
 		return fmt.Errorf("unexpected tag: %x", tag)
 	}
-	tags, err := decodeaare(data, d.tmpbuffer)
+	tags, err := decodeaare(data, &d.tmpbuffer)
 	if err != nil {
 		return fmt.Errorf("unable to parse aare: %v", err)
 	}
@@ -222,9 +218,9 @@ func (d *dlmsal) Open() error { // login and shits
 		case BERTypeContext | BERTypeConstructed | PduTypeCalledAEQualifier: // 0xa3
 			d.aareres.SourceDiagnostic, err = parseAssociateSourceDiagnostic(&dt)
 		case BERTypeContext | BERTypeConstructed | PduTypeCalledAPInvocationID: // 0xa4
-			d.aareres.SystemTitle, err = parseAPTitle(&dt, d.tmpbuffer)
+			d.aareres.SystemTitle, err = parseAPTitle(&dt, &d.tmpbuffer)
 		case BERTypeContext | BERTypeConstructed | PduTypeUserInformation: // 0xbe
-			d.aareres.initiateResponse, d.aareres.confirmedServiceError, err = parseUserInformation(&dt, d.tmpbuffer)
+			d.aareres.initiateResponse, d.aareres.confirmedServiceError, err = parseUserInformation(&dt, &d.tmpbuffer)
 		}
 
 		if err != nil {

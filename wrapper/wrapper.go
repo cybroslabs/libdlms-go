@@ -47,10 +47,6 @@ func (w *wrapper) Disconnect() error {
 	return w.transport.Disconnect()
 }
 
-func (w *wrapper) IsOpen() bool {
-	return w.transport.IsOpen()
-}
-
 func (w *wrapper) Open() error {
 	w.logf("try to open wrapper with source %d and destination %d", w.source, w.destination)
 	return w.transport.Open()
@@ -154,7 +150,7 @@ func (w *wrapper) Read(p []byte) (n int, err error) {
 
 	n = len(p)
 	if n == 0 {
-		return 0, fmt.Errorf("nothing to read")
+		return 0, base.ErrNothingToRead
 	}
 	if w.remaining == 0 {
 		return 0, io.EOF

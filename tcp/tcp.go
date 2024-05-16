@@ -94,10 +94,6 @@ func (t *tcp) Disconnect() error {
 	return nil
 }
 
-func (t *tcp) IsOpen() bool {
-	return t.connected
-}
-
 func (t *tcp) SetMaxReceivedBytes(m int64) {
 	t.currentincoming = 0
 	t.maxincoming = m
@@ -126,7 +122,7 @@ func (t *tcp) setcommdeadline() {
 
 func (t *tcp) Write(src []byte) error {
 	if !t.connected {
-		return fmt.Errorf("not connected")
+		return base.ErrNotOpened
 	}
 
 	for len(src) > 0 {
@@ -149,10 +145,10 @@ func (t *tcp) Write(src []byte) error {
 
 func (t *tcp) Read(p []byte) (n int, err error) {
 	if !t.connected {
-		return 0, fmt.Errorf("not connected")
+		return 0, base.ErrNotOpened
 	}
 	if len(p) == 0 {
-		return 0, fmt.Errorf("nothing to read")
+		return 0, base.ErrNothingToRead
 	}
 
 	n = len(p)

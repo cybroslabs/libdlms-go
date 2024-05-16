@@ -34,108 +34,13 @@ type DlmsDataStream interface {
 
 type datastream struct {
 	src      io.Reader
-	buffer   []byte
+	buffer   tmpbuffer
 	stack    []datastreamstate
 	inerror  bool
 	ineof    bool
 	logger   *zap.SugaredLogger
 	inmemory bool
-	mem      *datachunked
-}
-
-type datachunked struct {
-	buffers [][]byte
-	offset  int
-	size    int
-}
-
-func (d *datachunked) rewind() {
-	d.offset = 0
-}
-
-func (d *datachunked) appendfrom(src io.Reader) (err error) {
-	var rem int
-	var l int
-	if len(d.buffers) == 0 {
-		d.buffers = make([][]byte, 1)
-		d.buffers[0] = make([]byte, memchunksize)
-		rem = memchunksize
-		l = 0
-	} else {
-		l = len(d.buffers) - 1
-		rem = cap(d.buffers[l]) - len(d.buffers[l])
-		if rem != 0 {
-			d.buffers[l] = d.buffers[l][:memchunksize]
-		}
-	}
-	var n int
-	for {
-		if rem == 0 { // i have to append something
-			d.buffers = append(d.buffers, make([]byte, memchunksize))
-			l++
-			rem = memchunksize
-		}
-		n, err = src.Read(d.buffers[l][memchunksize-rem:])
-		d.size += n
-		rem -= n
-		if err != nil {
-			d.buffers[l] = d.buffers[l][:memchunksize-rem]
-			if err == io.EOF {
-				return nil
-			}
-			return err
-		}
-		if n == 0 {
-			d.buffers[l] = d.buffers[l][:memchunksize-rem]
-			return fmt.Errorf("no data read") // that shouldnt happen
-		}
-	}
-}
-
-func (d *datachunked) clear() {
-	if len(d.buffers) > 0 { // reuse the first chunk
-		d.buffers = d.buffers[:1]
-		d.buffers[0] = d.buffers[0][:0]
-	}
-	d.offset = 0
-	d.size = 0
-}
-
-func (d *datachunked) append(p []byte) { // always write everything, panic in case out of memory
-	var n int
-	if len(d.buffers) == 0 {
-		d.buffers = make([][]byte, 1)
-		d.buffers[0] = make([]byte, 0, memchunksize)
-		n = memchunksize
-	}
-	l := len(d.buffers) - 1
-	for len(p) > 0 {
-		n = cap(d.buffers[l]) - len(d.buffers[l])
-		if n == 0 {
-			d.buffers = append(d.buffers, make([]byte, 0, memchunksize))
-			l++
-			n = memchunksize
-		}
-		if n > len(p) {
-			n = len(p)
-		}
-		d.buffers[l] = append(d.buffers[l], p[:n]...)
-		d.size += n
-		p = p[n:]
-	}
-}
-
-func (d *datachunked) Read(p []byte) (n int, err error) {
-	if d.offset == d.size {
-		return 0, io.EOF
-	}
-	n = copy(p, d.buffers[d.offset>>memchunkbits][d.offset&(memchunksize-1):])
-	d.offset += n
-	return
-}
-
-func newdatachunked() *datachunked {
-	return &datachunked{offset: 0, size: 0}
+	mem      ChunkedStream
 }
 
 type datastreamstate struct {
@@ -145,7 +50,6 @@ type datastreamstate struct {
 
 func newDataStream(src io.Reader, inmem bool, logger *zap.SugaredLogger) (DlmsDataStream, error) {
 	ret := datastream{
-		buffer:   make([]byte, 128),
 		stack:    make([]datastreamstate, 1),
 		inerror:  false,
 		ineof:    false,
@@ -153,8 +57,8 @@ func newDataStream(src io.Reader, inmem bool, logger *zap.SugaredLogger) (DlmsDa
 		inmemory: inmem,
 	}
 	if inmem { // readout everything from src
-		ret.mem = newdatachunked()
-		err := ret.mem.appendfrom(src)
+		ret.mem = NewChunkedStream()
+		err := ret.mem.CopyFrom(src)
 		if err != nil {
 			return nil, err
 		}
@@ -168,7 +72,7 @@ func newDataStream(src io.Reader, inmem bool, logger *zap.SugaredLogger) (DlmsDa
 
 func (d *datastream) Rewind() error {
 	if d.inmemory {
-		d.mem.rewind()
+		d.mem.Rewind()
 		if len(d.stack) == 0 {
 			d.stack = append(d.stack, datastreamstate{items: 1, element: TagError})
 		} else {
@@ -215,7 +119,7 @@ func (d *datastream) NextElement() (*DlmsDataStreamItem, error) {
 	case TagStructure:
 		return d.arrayElement(t)
 	default:
-		next, _, err := decodeData(d.src, t, d.buffer)
+		next, _, err := decodeData(d.src, t, &d.buffer)
 		if err != nil {
 			d.inerror = true
 			return nil, err
@@ -226,7 +130,7 @@ func (d *datastream) NextElement() (*DlmsDataStreamItem, error) {
 }
 
 func (d *datastream) arrayElement(t dataTag) (*DlmsDataStreamItem, error) {
-	l, _, err := decodelength(d.src, d.buffer)
+	l, _, err := decodelength(d.src, &d.buffer)
 	if err != nil {
 		d.inerror = true
 		return nil, err
@@ -240,8 +144,9 @@ func (d *datastream) Close() error { // artifically read out the rest
 		return nil
 	}
 	cnt := 0
+	rb := d.buffer[:]
 	for {
-		n, err := d.src.Read(d.buffer)
+		n, err := d.src.Read(rb)
 		cnt += n
 		if err != nil {
 			if err == io.EOF {
@@ -256,8 +161,8 @@ func (d *datastream) Close() error { // artifically read out the rest
 			return fmt.Errorf("no data read, shouldnt happen")
 		}
 		// make buffer a bit bigger because this is used to readout nothing usually
-		if len(d.buffer) < 4096 {
-			d.buffer = make([]byte, 4096)
+		if len(rb) < 4096 {
+			rb = make([]byte, 4096)
 		}
 	}
 }

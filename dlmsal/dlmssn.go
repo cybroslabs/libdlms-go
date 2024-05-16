@@ -3,16 +3,18 @@ package dlmsal
 import (
 	"fmt"
 	"io"
+
+	"github.com/cybroslabs/libdlms-go/base"
 )
 
 // SN func read, for now it should be enough
 func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 	if !d.isopen {
-		return nil, fmt.Errorf("connection is not open")
+		return nil, base.ErrNotOpened
 	}
 
 	if len(items) == 0 {
-		return nil, fmt.Errorf("no items to read")
+		return nil, base.ErrNothingToRead
 	}
 
 	local := &d.pdu
@@ -49,7 +51,7 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 	if d.tmpbuffer[0] != byte(TagReadResponse) {
 		return nil, fmt.Errorf("unexpected tag: %x", d.tmpbuffer[0])
 	}
-	l, _, err := decodelength(d.transport, d.tmpbuffer)
+	l, _, err := decodelength(d.transport, &d.tmpbuffer)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +66,7 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 		}
 		switch d.tmpbuffer[0] {
 		case 0:
-			ret[i], _, err = decodeDataTag(d.transport, d.tmpbuffer)
+			ret[i], _, err = decodeDataTag(d.transport, &d.tmpbuffer)
 			if err != nil {
 				return nil, err
 			}
@@ -84,7 +86,7 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 
 func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error) {
 	if !d.isopen {
-		return nil, nil, fmt.Errorf("connection is not open")
+		return nil, nil, base.ErrNotOpened
 	}
 
 	local := &d.pdu
@@ -119,7 +121,7 @@ func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream,
 	if d.tmpbuffer[0] != byte(TagReadResponse) {
 		return nil, nil, fmt.Errorf("unexpected tag: %x", d.tmpbuffer[0])
 	}
-	l, _, err := decodelength(d.transport, d.tmpbuffer)
+	l, _, err := decodelength(d.transport, &d.tmpbuffer)
 	if err != nil {
 		return nil, nil, err
 	}

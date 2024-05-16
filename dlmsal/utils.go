@@ -92,7 +92,7 @@ func encodetag2(dst *bytes.Buffer, tag byte, innertag byte, data []byte) {
 	}
 }
 
-func decodelength(src io.Reader, tmp []byte) (uint, int, error) {
+func decodelength(src io.Reader, tmp *tmpbuffer) (uint, int, error) {
 	_, err := io.ReadFull(src, tmp[:1])
 	if err != nil {
 		return 0, 0, err
@@ -119,7 +119,7 @@ func decodelength(src io.Reader, tmp []byte) (uint, int, error) {
 	return r, c + 1, nil
 }
 
-func decodetag(src []byte, tmp []byte) (byte, int, []byte, error) {
+func decodetag(src []byte, tmp *tmpbuffer) (byte, int, []byte, error) {
 	if len(src) < 2 {
 		return 0, 0, nil, fmt.Errorf("no data available")
 	}

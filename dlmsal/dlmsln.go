@@ -3,6 +3,8 @@ package dlmsal
 import (
 	"fmt"
 	"io"
+
+	"github.com/cybroslabs/libdlms-go/base"
 )
 
 type dlmsalget struct { // this will implement io.Reader for LN Get operation
@@ -20,7 +22,7 @@ type dlmsalget struct { // this will implement io.Reader for LN Get operation
 
 func (ln *dlmsalget) get(items []DlmsLNRequestItem) ([]DlmsData, error) {
 	if len(items) == 0 {
-		return nil, fmt.Errorf("no items to read")
+		return nil, base.ErrNothingToRead
 	}
 	base := ln.base
 	local := &base.pdu
@@ -233,7 +235,7 @@ func (ln *dlmsalget) getnextdata(i int) (cont bool, err error) {
 				}
 				ln.data[i] = NewDlmsDataError(DlmsError{Result: AccessResultTag(base.tmpbuffer[0])})
 			} else {
-				ln.data[i], _, err = decodeDataTag(base.transport, base.tmpbuffer)
+				ln.data[i], _, err = decodeDataTag(base.transport, &base.tmpbuffer)
 				if err != nil {
 					return false, err
 				}
@@ -243,7 +245,7 @@ func (ln *dlmsalget) getnextdata(i int) (cont bool, err error) {
 			if len(ln.data) == 1 {
 				return false, fmt.Errorf("expecting normal response")
 			}
-			l, _, err := decodelength(base.transport, base.tmpbuffer)
+			l, _, err := decodelength(base.transport, &base.tmpbuffer)
 			if err != nil {
 				return false, err
 			}
@@ -262,7 +264,7 @@ func (ln *dlmsalget) getnextdata(i int) (cont bool, err error) {
 					}
 					ln.data[i] = NewDlmsDataError(DlmsError{Result: AccessResultTag(base.tmpbuffer[0])})
 				} else {
-					ln.data[i], _, err = decodeDataTag(base.transport, base.tmpbuffer)
+					ln.data[i], _, err = decodeDataTag(base.transport, &base.tmpbuffer)
 					if err != nil {
 						return false, err
 					}
@@ -273,7 +275,7 @@ func (ln *dlmsalget) getnextdata(i int) (cont bool, err error) {
 		case TagGetResponseWithDataBlock: // this is a bit of hell, read till eof from lower layer and then ask for next block and so on
 			ln.state = 1
 			if len(ln.data) == 1 {
-				ln.data[i], _, err = decodeDataTag(ln, base.tmpbuffer)
+				ln.data[i], _, err = decodeDataTag(ln, &base.tmpbuffer)
 			} else { // with list, so read first byte to decide if there is an error and result byte or decode data
 				err = ln.decodedata(i)
 			}
@@ -307,14 +309,14 @@ func (ln *dlmsalget) decodedata(i int) (err error) {
 		}
 		ln.data[i] = NewDlmsDataError(DlmsError{Result: AccessResultTag(base.tmpbuffer[0])})
 	} else {
-		ln.data[i], _, err = decodeDataTag(ln, base.tmpbuffer)
+		ln.data[i], _, err = decodeDataTag(ln, &base.tmpbuffer)
 	}
 	return
 }
 
 func (ln *dlmsalget) Read(p []byte) (n int, err error) { // this will go to data decoder
 	if len(p) == 0 { // that shouldnt happen
-		return 0, fmt.Errorf("no data to read")
+		return 0, base.ErrNothingToRead
 	}
 	base := ln.base
 	switch ln.state {
@@ -329,7 +331,7 @@ func (ln *dlmsalget) Read(p []byte) (n int, err error) { // this will go to data
 		}
 		blockno := (uint32(base.tmpbuffer[1]) << 24) | (uint32(base.tmpbuffer[2]) << 16) | (uint32(base.tmpbuffer[3]) << 8) | uint32(base.tmpbuffer[4])
 		ln.blockexp = blockno
-		ln.remaining, _, err = decodelength(base.transport, base.tmpbuffer) // refactor usage of these tmp buffers...
+		ln.remaining, _, err = decodelength(base.transport, &base.tmpbuffer) // refactor usage of these tmp buffers...
 		if err != nil {
 			return 0, err
 		}
@@ -377,7 +379,7 @@ func (ln *dlmsalget) Read(p []byte) (n int, err error) { // this will go to data
 			if ln.blockexp != blockno {
 				return 0, fmt.Errorf("unexpected block number")
 			}
-			ln.remaining, _, err = decodelength(base.transport, base.tmpbuffer) // refactor usage of these tmp buffers...
+			ln.remaining, _, err = decodelength(base.transport, &base.tmpbuffer) // refactor usage of these tmp buffers...
 			if err != nil {
 				return 0, err
 			}

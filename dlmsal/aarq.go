@@ -211,7 +211,7 @@ func encodeaarq(settings *DlmsSettings) (out []byte, err error) {
 	return
 }
 
-func decodeaare(src []byte, tmp []byte) ([]aaretag, error) {
+func decodeaare(src []byte, tmp *tmpbuffer) ([]aaretag, error) {
 	ret := make([]aaretag, 0, 20)
 	for len(src) > 0 {
 		tag, l, data, err := decodetag(src, tmp)
@@ -266,7 +266,7 @@ func parseAssociateSourceDiagnostic(tag *aaretag) (out SourceDiagnostic, err err
 	return
 }
 
-func parseAPTitle(tag *aaretag, tmp []byte) (out []byte, err error) {
+func parseAPTitle(tag *aaretag, tmp *tmpbuffer) (out []byte, err error) {
 	if len(tag.data) < 2 {
 		return nil, fmt.Errorf("invalid A4 tag length")
 	}
@@ -282,7 +282,7 @@ func parseAPTitle(tag *aaretag, tmp []byte) (out []byte, err error) {
 	return
 }
 
-func parseUserInformation(tag *aaretag, tmp []byte) (ir *initiateResponse, cse *confirmedServiceError, err error) {
+func parseUserInformation(tag *aaretag, tmp *tmpbuffer) (ir *initiateResponse, cse *confirmedServiceError, err error) {
 	if len(tag.data) < 6 {
 		err = fmt.Errorf("invalid BE tag length")
 		return

@@ -10,7 +10,6 @@ type Stream interface { // todo, make it a bit more streamable, so receive wante
 	Close() error
 	Open() error
 	Disconnect() error // hard end of connection without solving any unassociation or so
-	IsOpen() bool
 	SetLogger(logger *zap.SugaredLogger)
 	SetDeadline(t time.Time)     // zero time means no deadline
 	SetMaxReceivedBytes(m int64) // every call resets current counter, exceeding bytes count means comm error, only incomming bytes are counted

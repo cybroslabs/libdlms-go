@@ -295,10 +295,6 @@ func (w *maclayer) Disconnect() error {
 	return w.transport.Disconnect()
 }
 
-func (w *maclayer) IsOpen() bool {
-	return w.isopen
-}
-
 func (w *maclayer) getnextI() (pck *macpacket, err error) {
 	for len(w.toberead) > 0 {
 		pck = &w.toberead[0]
@@ -331,13 +327,13 @@ func (w *maclayer) sendRR() error {
 
 func (w *maclayer) Read(p []byte) (n int, err error) {
 	if !w.isopen {
-		return 0, fmt.Errorf("not open")
+		return 0, base.ErrNotOpened
 	}
 	if w.state == 0 {
 		return 0, io.EOF
 	}
 	if len(p) == 0 {
-		return 0, fmt.Errorf("nothing to read")
+		return 0, base.ErrNothingToRead
 	}
 	err = w.writeout()
 	if err != nil {
@@ -441,7 +437,7 @@ func (w *maclayer) processRRresp() error {
 
 func (w *maclayer) Write(src []byte) error {
 	if !w.isopen {
-		return fmt.Errorf("not open")
+		return base.ErrNotOpened
 	}
 	if len(src) == 0 {
 		return nil

@@ -26,11 +26,6 @@ func (l *llc) Disconnect() error {
 	return l.transport.Disconnect()
 }
 
-// IsOpen implements base.Stream.
-func (l *llc) IsOpen() bool {
-	return l.transport.IsOpen()
-}
-
 // Open implements base.Stream.
 func (l *llc) Open() error {
 	return l.transport.Open()
