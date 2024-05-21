@@ -16,10 +16,15 @@ const (
 )
 
 type Gcm interface { // add length to the streamer interface? add systitle to constructor? not to copy it every damn time
-	Encrypt(sc byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error)
-	Encrypt2(scControl byte, scContent byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error)
-	Decrypt(sc byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error)
-	Decrypt2(scControl byte, scContent byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error)
+	GetEncryptLength(scControl byte, apdu []byte) (int, error)
+	// ret can be nil in case of not reused, ret and apdu can overlap, but exactly
+	Encrypt(ret []byte, sc byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error)
+	// ret can be nil in case of not reused
+	Encrypt2(ret []byte, scControl byte, scContent byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error)
+	// ret can be nil in case of not reused
+	Decrypt(ret []byte, sc byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error)
+	// ret can be nil in case of not reused
+	Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error)
 	GetDecryptorStream(sc byte, fc uint32, systitle []byte, apdu io.Reader) (GcmDecryptorStream, error)
 	GetDecryptorStream2(scControl byte, scContent byte, fc uint32, systitle []byte, apdu io.Reader) (GcmDecryptorStream, error)
 }
@@ -87,11 +92,11 @@ func (g *gcm) make_tables() {
 	}
 }
 
-func (g *gcm) Decrypt(sc byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error) {
-	return g.Decrypt2(sc, sc, fc, systitle, apdu)
+func (g *gcm) Decrypt(ret []byte, sc byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error) {
+	return g.Decrypt2(ret, sc, sc, fc, systitle, apdu)
 }
 
-func (g *gcm) Decrypt2(scControl byte, scContent byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error) {
+func (g *gcm) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error) {
 	if len(systitle) != 8 {
 		return nil, fmt.Errorf("systitle has to be 8 bytes long")
 	}
@@ -121,11 +126,26 @@ func (g *gcm) Decrypt2(scControl byte, scContent byte, fc uint32, systitle []byt
 			copy(aad[1+len(g.ak):], apdu[:len(apdu)-GCM_TAG_LENGTH])
 
 			err := g.aes_gcm_ad(nil, aad, nil, apdu[len(apdu)-GCM_TAG_LENGTH:])
-			return apdu[:len(apdu)-GCM_TAG_LENGTH], err
+			if err != nil {
+				return nil, err
+			}
+			wl := len(apdu) - GCM_TAG_LENGTH
+			if ret != nil && cap(ret) >= wl {
+				ret = ret[:wl]
+			} else {
+				ret = make([]byte, wl)
+			}
+			copy(ret, apdu[:wl])
+			return ret, nil
 		}
 	case 0x20:
 		{
-			ret := make([]byte, len(apdu))
+			wl := len(apdu)
+			if ret != nil && cap(ret) >= wl {
+				ret = ret[:wl]
+			} else {
+				ret = make([]byte, wl)
+			}
 			err := g.aes_gcm_ad(apdu, nil, ret, nil)
 			return ret, err
 		}
@@ -135,7 +155,12 @@ func (g *gcm) Decrypt2(scControl byte, scContent byte, fc uint32, systitle []byt
 				return nil, fmt.Errorf("too short ciphered data, no space for tag")
 			}
 			g.aad[0] = scContent
-			ret := make([]byte, len(apdu)-GCM_TAG_LENGTH)
+			wl := len(apdu) - GCM_TAG_LENGTH
+			if ret != nil && cap(ret) >= wl {
+				ret = ret[:wl]
+			} else {
+				ret = make([]byte, wl)
+			}
 			err := g.aes_gcm_ad(apdu[:len(apdu)-GCM_TAG_LENGTH], g.aad, ret, apdu[len(apdu)-GCM_TAG_LENGTH:])
 			return ret, err
 		}
@@ -176,11 +201,11 @@ func (g *gcm) GetDecryptorStream2(scControl byte, scContent byte, fc uint32, sys
 	return nil, fmt.Errorf("unsupported security control byte: %v", scControl)
 }
 
-func (g *gcm) Encrypt(sc byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error) {
-	return g.Encrypt2(sc, sc, fc, systitle, apdu)
+func (g *gcm) Encrypt(ret []byte, sc byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error) {
+	return g.Encrypt2(ret, sc, sc, fc, systitle, apdu)
 }
 
-func (g *gcm) Encrypt2(scControl byte, scContent byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error) {
+func (g *gcm) Encrypt2(ret []byte, scControl byte, scContent byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error) {
 	if len(systitle) != 8 {
 		return nil, fmt.Errorf("systitle has to be 8 bytes long")
 	}
@@ -198,6 +223,10 @@ func (g *gcm) Encrypt2(scControl byte, scContent byte, fc uint32, systitle []byt
 	iv[14] = 0
 	iv[15] = 1
 
+	wl, err := g.GetEncryptLength(scControl, apdu)
+	if err != nil {
+		return nil, err
+	}
 	switch scControl & 0xf0 {
 	case 0x10:
 		{
@@ -206,26 +235,50 @@ func (g *gcm) Encrypt2(scControl byte, scContent byte, fc uint32, systitle []byt
 			copy(aad[1:], g.ak)
 			copy(aad[1+len(g.ak):], apdu)
 
-			ret := make([]byte, len(apdu)+GCM_TAG_LENGTH)
+			if cap(ret) >= wl {
+				ret = ret[:wl]
+			} else {
+				ret = make([]byte, wl)
+			}
 			g.aes_gcm_ae(nil, aad, nil, ret[len(apdu):])
 			copy(ret, apdu)
 			return ret, nil
 		}
 	case 0x20:
 		{
-			ret := make([]byte, len(apdu))
+			if ret != nil && cap(ret) >= wl {
+				ret = ret[:wl]
+			} else {
+				ret = make([]byte, wl)
+			}
 			g.aes_gcm_ae(apdu, nil, ret, nil)
 			return ret, nil
 		}
 	case 0x30:
 		{
 			g.aad[0] = scContent
-			ret := make([]byte, len(apdu)+GCM_TAG_LENGTH)
+			if cap(ret) >= wl {
+				ret = ret[:wl]
+			} else {
+				ret = make([]byte, wl)
+			}
 			g.aes_gcm_ae(apdu, g.aad, ret[:len(apdu)], ret[len(apdu):])
 			return ret, nil
 		}
 	}
 	return nil, fmt.Errorf("unsupported security control byte: %v", scControl)
+}
+
+func (g *gcm) GetEncryptLength(scControl byte, apdu []byte) (int, error) {
+	switch scControl & 0xf0 {
+	case 0x10:
+		return len(apdu) + GCM_TAG_LENGTH, nil
+	case 0x20:
+		return len(apdu), nil
+	case 0x30:
+		return len(apdu) + GCM_TAG_LENGTH, nil
+	}
+	return 0, fmt.Errorf("unsupported security control byte: %v", scControl)
 }
 
 // x is not changed, dst is changed, needs 2nd tmp slot
@@ -338,8 +391,8 @@ func (g *gcm) aes_gctr_ghash(J0 []byte, x []byte, dst []byte, dsthash []byte) {
 	tmp := g.tmp[AES_BLOCK_SIZE<<1 : AES_BLOCK_SIZE*3]
 	n := len(x) >> AES_BLOCK_SIZE_ROT
 	for i := 0; i < n; i++ { // this part should be streamed
-		g.aes.Encrypt(dst, J0)
-		xor_block(dst, x)
+		g.aes.Encrypt(tmp, J0)
+		xor_block2(dst, tmp, x)
 		xor_block2(tmp, dsthash, dst)
 		g.gf_mult(tmp, dsthash)
 
@@ -365,8 +418,8 @@ func (g *gcm) aes_gctr_ghash_de(J0 []byte, x []byte, dst []byte, dsthash []byte)
 	tmp := g.tmp[AES_BLOCK_SIZE<<1 : AES_BLOCK_SIZE*3]
 	n := len(x) >> AES_BLOCK_SIZE_ROT
 	for i := 0; i < n; i++ { // this part should be streamed
-		g.aes.Encrypt(dst, J0)
-		xor_block(dst, x)
+		g.aes.Encrypt(tmp, J0)
+		xor_block2(dst, tmp, x)
 		xor_block2(tmp, dsthash, x)
 		g.gf_mult(tmp, dsthash)
 

@@ -77,7 +77,6 @@ func (d *chunkedstream) Write(p []byte) (n int, err error) { // always write eve
 	if len(d.buffers) == 0 {
 		d.buffers = make([][]byte, 1)
 		d.buffers[0] = make([]byte, 0, memchunksize)
-		nn = memchunksize
 	}
 	l := len(d.buffers) - 1
 	for len(p) > 0 {

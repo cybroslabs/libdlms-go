@@ -70,6 +70,37 @@ func encodelength(dst *bytes.Buffer, len uint) {
 	dst.WriteByte(byte(len))
 }
 
+func encodelength2(dst []byte, len uint) int {
+	if len < 128 {
+		dst[0] = byte(len)
+		return 1
+	}
+	if len < 256 {
+		dst[0] = 0x81
+		dst[1] = byte(len)
+		return 2
+	}
+	if len < 65536 {
+		dst[0] = 0x82
+		dst[1] = byte(len >> 8)
+		dst[2] = byte(len)
+		return 3
+	}
+	if len < 16777216 {
+		dst[0] = 0x83
+		dst[1] = byte(len >> 16)
+		dst[2] = byte(len >> 8)
+		dst[3] = byte(len)
+		return 4
+	}
+	dst[0] = 0x84
+	dst[1] = byte(len >> 24)
+	dst[2] = byte(len >> 16)
+	dst[3] = byte(len >> 8)
+	dst[4] = byte(len)
+	return 5
+}
+
 func encodetag(dst *bytes.Buffer, tag byte, data []byte) {
 	dst.WriteByte(tag)
 	encodelength(dst, uint(len(data)))
@@ -134,6 +165,12 @@ func decodetag(src []byte, tmp *tmpbuffer) (byte, int, []byte, error) {
 		return 0, 0, nil, fmt.Errorf("no data left in source")
 	}
 	return tag, c + 1 + int(dlen), src[1+c : 1+c+int(dlen)], nil
+}
+
+func newcopy(src []byte) []byte {
+	dst := make([]byte, len(src))
+	copy(dst, src)
+	return dst
 }
 
 var _units = [...]string{"unknown",

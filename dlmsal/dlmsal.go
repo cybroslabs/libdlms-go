@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/cybroslabs/libdlms-go/base"
+	"github.com/cybroslabs/libdlms-go/gcm"
 	"go.uber.org/zap"
 )
 
@@ -14,6 +15,8 @@ const (
 
 	VAANameLN = 0x0007
 	VAANameSN = 0xFA00
+
+	maxsmallreadout = 2048
 )
 
 type Authentication byte
@@ -29,6 +32,14 @@ const (
 	AuthenticationHighEcdsa  Authentication = 7 // High authentication is used. Password is hashed with ECDSA.
 )
 
+type DlmsSecurity byte
+
+const (
+	SecurityNone           DlmsSecurity = 0    // Transport security is not used.
+	SecurityAuthentication DlmsSecurity = 0x10 // Authentication security is used.
+	SecurityEncryption     DlmsSecurity = 0x20 // Encryption security is used.
+)
+
 type DlmsSNRequestItem struct {
 	Address          int16
 	HasAccess        bool
@@ -38,13 +49,15 @@ type DlmsSNRequestItem struct {
 }
 
 type DlmsLNRequestItem struct {
-	ClassId          uint16
-	Obis             DlmsObis
+	ClassId uint16
+	Obis    DlmsObis
+	// also method id
 	Attribute        int8
 	HasAccess        bool
 	AccessDescriptor byte
 	AccessData       *DlmsData
-	SetData          *DlmsData
+	// also action data
+	SetData *DlmsData
 }
 
 type DlmsClient interface {
@@ -56,6 +69,8 @@ type DlmsClient interface {
 	GetStream(item DlmsLNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error)
 	Read(items []DlmsSNRequestItem) ([]DlmsData, error)
 	ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error) // only for big single item queries
+	Action(item DlmsLNRequestItem) (*DlmsData, error)
+	LNAuthentication(checkresp bool) error
 }
 
 type tmpbuffer [128]byte
@@ -63,27 +78,51 @@ type tmpbuffer [128]byte
 type dlmsal struct {
 	transport      base.Stream
 	logger         *zap.SugaredLogger
-	settings       DlmsSettings
+	settings       *DlmsSettings
 	isopen         bool
-	aareres        aareresponse
+	aareres        AAResponse
 	maxPduSendSize int
 
 	// things for communications/data parsing
-	invokeid  byte
-	buffer    []byte
-	tmpbuffer tmpbuffer
-	pdu       bytes.Buffer // reused for sending requests
+	invokeid    byte
+	tmpbuffer   tmpbuffer
+	pdu         bytes.Buffer // reused for sending requests
+	cryptbuffer []byte       // reusable crypt buffer
 }
 
 type DlmsSettings struct {
-	Authentication     Authentication
-	ApplicationContext ApplicationContext
-	Password           []byte
-	ConformanceBlock   uint32
-	MaxPduRecvSize     int
-	VAAddress          int16
-	HighPriority       byte
-	ConfirmedRequests  byte
+	ConformanceBlock  uint32
+	MaxPduRecvSize    int
+	VAAddress         int16
+	HighPriority      byte
+	ConfirmedRequests byte
+	EmptyRLRQ         bool
+	Security          DlmsSecurity
+	StoC              []byte
+	CtoS              []byte
+	SourceDiagnostic  SourceDiagnostic
+
+	// private part
+	authentication     Authentication
+	applicationContext ApplicationContext
+	password           []byte
+	gcm                gcm.Gcm
+	systemtitle        []byte
+	framecounter       uint32
+	usededicatedkey    bool
+	dedgcm             gcm.Gcm
+	dedicatedkey       []byte
+	akcopy             []byte
+}
+
+func (d *DlmsSettings) SetDedicatedKey(key []byte) (err error) {
+	if key == nil {
+		d.dedgcm = nil
+	} else {
+		d.dedgcm, err = gcm.NewGCM(key, d.akcopy)
+		d.dedicatedkey = newcopy(key) // regardless error
+	}
+	return
 }
 
 func NewSettingsWithLowAuthenticationSN(password string) (*DlmsSettings, error) {
@@ -91,9 +130,9 @@ func NewSettingsWithLowAuthenticationSN(password string) (*DlmsSettings, error) 
 		return nil, fmt.Errorf("password is empty")
 	}
 	return &DlmsSettings{
-		Authentication:     AuthenticationLow,
-		ApplicationContext: ApplicationContextSNNoCiphering,
-		Password:           []byte(password),
+		authentication:     AuthenticationLow,
+		applicationContext: ApplicationContextSNNoCiphering,
+		password:           []byte(password),
 		ConformanceBlock: ConformanceBlockBlockTransferWithGetOrRead | ConformanceBlockBlockTransferWithSetOrWrite |
 			ConformanceBlockRead | ConformanceBlockWrite | ConformanceBlockSelectiveAccess | ConformanceBlockMultipleReferences,
 	}, nil
@@ -104,9 +143,9 @@ func NewSettingsWithLowAuthenticationLN(password string) (*DlmsSettings, error) 
 		return nil, fmt.Errorf("password is empty")
 	}
 	return &DlmsSettings{
-		Authentication:     AuthenticationLow,
-		ApplicationContext: ApplicationContextLNNoCiphering,
-		Password:           []byte(password),
+		authentication:     AuthenticationLow,
+		applicationContext: ApplicationContextLNNoCiphering,
+		password:           []byte(password),
 		HighPriority:       0x80,
 		ConfirmedRequests:  0x40,
 		ConformanceBlock: ConformanceBlockBlockTransferWithGetOrRead | ConformanceBlockBlockTransferWithSetOrWrite |
@@ -115,14 +154,56 @@ func NewSettingsWithLowAuthenticationLN(password string) (*DlmsSettings, error) 
 	}, nil
 }
 
+func NewSettingsNoAuthenticationLN() (*DlmsSettings, error) {
+	return &DlmsSettings{
+		authentication:     AuthenticationNone,
+		applicationContext: ApplicationContextLNNoCiphering,
+		HighPriority:       0x80,
+		ConfirmedRequests:  0x40,
+		ConformanceBlock: ConformanceBlockBlockTransferWithGetOrRead | ConformanceBlockBlockTransferWithSetOrWrite |
+			ConformanceBlockBlockTransferWithAction | ConformanceBlockAction | ConformanceBlockGet | ConformanceBlockSet |
+			ConformanceBlockSelectiveAccess | ConformanceBlockMultipleReferences | ConformanceBlockAttribute0SupportedWithGet,
+	}, nil
+}
+
+func NewSettingsWithGmacLN(systemtitle []byte, ek []byte, ak []byte, ctoshash []byte, fc uint32) (*DlmsSettings, error) {
+	if len(systemtitle) != 8 {
+		return nil, fmt.Errorf("systemtitle has to be 8 bytes long")
+	}
+	if len(ctoshash) == 0 {
+		return nil, fmt.Errorf("ctoshash is empty")
+	}
+	g, err := gcm.NewGCM(ek, ak)
+	if err != nil {
+		return nil, err
+	}
+	ret := DlmsSettings{
+		authentication:     AuthenticationHighGmac,
+		applicationContext: ApplicationContextLNCiphering,
+		HighPriority:       0x80,
+		ConfirmedRequests:  0x40,
+		ConformanceBlock: ConformanceBlockBlockTransferWithGetOrRead | ConformanceBlockBlockTransferWithSetOrWrite |
+			ConformanceBlockBlockTransferWithAction | ConformanceBlockAction | ConformanceBlockGet | ConformanceBlockSet |
+			ConformanceBlockSelectiveAccess | ConformanceBlockMultipleReferences | ConformanceBlockAttribute0SupportedWithGet |
+			ConformanceBlockGeneralProtection,
+		systemtitle:  newcopy(systemtitle),
+		gcm:          g,
+		akcopy:       newcopy(ak), // this is sad...
+		password:     newcopy(ctoshash),
+		framecounter: fc,
+		Security:     SecurityEncryption | SecurityAuthentication,
+	}
+	ret.CtoS = ret.password // just reference
+	return &ret, nil
+}
+
 func New(transport base.Stream, settings *DlmsSettings) DlmsClient {
 	return &dlmsal{
 		transport: transport,
 		logger:    nil,
-		settings:  *settings,
+		settings:  settings,
 		isopen:    false,
 		invokeid:  0,
-		buffer:    make([]byte, 2048),
 	}
 }
 
@@ -137,7 +218,7 @@ func (d *dlmsal) Close() error {
 		return nil
 	}
 
-	rl, err := encodeRLRQ(&d.settings)
+	rl, err := encodeRLRQ(d.settings)
 	if err != nil {
 		return err
 	}
@@ -145,7 +226,7 @@ func (d *dlmsal) Close() error {
 	if err != nil {
 		return err
 	}
-	_, err = d.smallreadout()
+	_, err = d.smallreadout() // yes, this is bullshit
 	d.isopen = false
 	if err != nil { // just ignore data itself as simulator returns some weird shit (based on e650 maybe)
 		return err
@@ -162,14 +243,21 @@ func (d *dlmsal) Disconnect() error {
 func (d *dlmsal) smallreadout() ([]byte, error) {
 	// safely use already existing buffer, it could fail if aare is bigger than it, but it can be solved later
 	total := 0
+	ret := make([]byte, 128)
 	for {
-		if total == len(d.buffer) {
-			return nil, fmt.Errorf("no room for aare or rlre")
+		if total == len(ret) {
+			if total >= maxsmallreadout {
+				return nil, fmt.Errorf("no room for aare or rlre (or smallreadout)")
+			}
+			dt := make([]byte, len(ret)+128)
+			copy(dt, ret)
+			ret = dt
 		}
-		n, err := d.transport.Read(d.buffer[total:])
+
+		n, err := d.transport.Read(ret[total:])
 		total += n
 		if err == io.EOF {
-			return d.buffer[:total], nil
+			return ret[:total], nil
 		}
 		if err != nil {
 			return nil, err
@@ -185,7 +273,7 @@ func (d *dlmsal) Open() error { // login and shits
 		return err
 	}
 
-	b, err := encodeaarq(&d.settings)
+	b, err := d.encodeaarq()
 	if err != nil {
 		return err
 	}
@@ -219,8 +307,12 @@ func (d *dlmsal) Open() error { // login and shits
 			d.aareres.SourceDiagnostic, err = parseAssociateSourceDiagnostic(&dt)
 		case BERTypeContext | BERTypeConstructed | PduTypeCalledAPInvocationID: // 0xa4
 			d.aareres.SystemTitle, err = parseAPTitle(&dt, &d.tmpbuffer)
+		case BERTypeContext | BERTypeConstructed | PduTypeSenderAcseRequirements: // 0xaa
+			d.settings.StoC, err = parseSenderAcseRequirements(&dt, &d.tmpbuffer)
 		case BERTypeContext | BERTypeConstructed | PduTypeUserInformation: // 0xbe
-			d.aareres.initiateResponse, d.aareres.confirmedServiceError, err = parseUserInformation(&dt, &d.tmpbuffer)
+			d.aareres.initiateResponse, d.aareres.confirmedServiceError, err = d.parseUserInformation(&dt)
+		default:
+			d.logf("Unknown tag: %02x", dt.tag)
 		}
 
 		if err != nil {
@@ -228,14 +320,21 @@ func (d *dlmsal) Open() error { // login and shits
 		}
 	}
 
-	if d.aareres.ApplicationContextName != d.settings.ApplicationContext {
-		return fmt.Errorf("application contextes differ")
+	if d.aareres.confirmedServiceError != nil {
+		return fmt.Errorf("confirmed service error: %v", d.aareres.confirmedServiceError.ConfirmedServiceError)
+	}
+	if d.aareres.ApplicationContextName != d.settings.applicationContext {
+		return fmt.Errorf("application contextes differ: %v != %v", d.aareres.ApplicationContextName, d.settings.applicationContext)
 	}
 	if d.aareres.AssociationResult != AssociationResultAccepted {
-		return fmt.Errorf("login failed")
+		return fmt.Errorf("login failed: %v", d.aareres.AssociationResult)
 	}
-	if d.aareres.SourceDiagnostic != SourceDiagnosticNone {
-		return fmt.Errorf("invalid source diagnostic")
+	d.settings.SourceDiagnostic = d.aareres.SourceDiagnostic // duplicit information, damn it, maybe make a bit bigger settings, or maybe status?
+	switch d.aareres.SourceDiagnostic {
+	case SourceDiagnosticNone:
+	case SourceDiagnosticAuthenticationRequired:
+	default:
+		return fmt.Errorf("invalid source diagnostic: %v", d.aareres.SourceDiagnostic)
 	}
 	// store aare maybe into context, max pdu info and so on
 	if d.aareres.initiateResponse == nil {

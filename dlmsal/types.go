@@ -15,9 +15,9 @@ type DlmsDateTime struct {
 	Status    byte
 }
 
-func (t *DlmsDateTime) ToTime() (*time.Time, error) {
+func (t *DlmsDateTime) ToTime() (tt time.Time, err error) {
 	if t.Date.Year == 0xffff || t.Date.Month == 0xff || t.Date.Day == 0xff || t.Time.Hour == 0xff || t.Time.Minute == 0xff {
-		return nil, fmt.Errorf("invalid date or time")
+		return tt, fmt.Errorf("invalid date or time")
 	}
 	ns := 0
 	if t.Time.Hundredths != 0xff {
@@ -27,8 +27,8 @@ func (t *DlmsDateTime) ToTime() (*time.Time, error) {
 	if t.Deviation != -32768 {
 		dev = int(t.Deviation)
 	}
-	tt := time.Date(int(t.Date.Year), time.Month(t.Date.Month), int(t.Date.Day), int(t.Time.Hour), int(t.Time.Minute), int(t.Time.Second), ns, time.FixedZone("UTC", dev*60))
-	return &tt, nil
+	tt = time.Date(int(t.Date.Year), time.Month(t.Date.Month), int(t.Date.Day), int(t.Time.Hour), int(t.Time.Minute), int(t.Time.Second), ns, time.FixedZone("UTC", dev*60))
+	return
 }
 
 func (t *DlmsDateTime) EncodeToDlms(dst *bytes.Buffer) {

@@ -32,6 +32,7 @@ type Number struct {
 func recast(trg reflect.Value, data *DlmsData) error {
 	e := trg.Kind()
 	_, istime := trg.Interface().(time.Time)
+	_, isdlmstime := trg.Interface().(DlmsDateTime)
 	_, isobis := trg.Interface().(DlmsObis)
 	_, isdlmsdata := trg.Interface().(DlmsData)
 	_, isnumber := trg.Interface().(Number)
@@ -53,7 +54,31 @@ func recast(trg reflect.Value, data *DlmsData) error {
 			if err != nil {
 				return err
 			}
-			trg.Set(reflect.ValueOf(*tt))
+			trg.Set(reflect.ValueOf(tt))
+		case DlmsDateTime:
+			tt, err := b.ToTime()
+			if err != nil {
+				return err
+			}
+			trg.Set(reflect.ValueOf(tt))
+		default:
+			return fmt.Errorf("invalid source type %T for time", data.Value)
+		}
+		return nil
+	}
+	if isdlmstime {
+		switch b := data.Value.(type) {
+		case []byte:
+			if len(b) != 12 {
+				return fmt.Errorf("invalid length")
+			}
+			bb, err := NewDlmsDateTimeFromSlice(b)
+			if err != nil {
+				return nil
+			}
+			trg.Set(reflect.ValueOf(*bb))
+		case DlmsDateTime:
+			trg.Set(reflect.ValueOf(b))
 		default:
 			return fmt.Errorf("invalid source type %T for time", data.Value)
 		}

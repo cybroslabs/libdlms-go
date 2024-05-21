@@ -86,6 +86,26 @@ const (
 	TagGetResponseWithList      getResponseTag = 0x3
 )
 
+type actionRequestTag byte
+
+const (
+	TagActionRequestNormal                 actionRequestTag = 0x1
+	TagActionRequestNextPBlock             actionRequestTag = 0x2
+	TagActionRequestWithList               actionRequestTag = 0x3
+	TagActionRequestWithFirstPBlock        actionRequestTag = 0x4
+	TagActionRequestWithListAndFirstPBlock actionRequestTag = 0x5
+	TagActionRequestWithPBlock             actionRequestTag = 0x6
+)
+
+type actionResponseTag byte
+
+const (
+	TagActionResponseNormal     actionResponseTag = 0x1
+	TagActionResponseWithPBlock actionResponseTag = 0x2
+	TagActionResponseWithList   actionResponseTag = 0x3
+	TagActionResponseNextPBlock actionResponseTag = 0x4
+)
+
 func (s AccessResultTag) String() string {
 	switch s {
 	case TagAccSuccess:

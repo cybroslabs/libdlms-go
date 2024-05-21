@@ -3,7 +3,6 @@ package dlmsal
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 )
 
@@ -36,7 +35,7 @@ const (
 )
 
 type initiateResponse struct {
-	NegotiatedQualityOfService *byte
+	NegotiatedQualityOfService byte
 	NegotiatedConformance      uint32
 	ServerMaxReceivePduSize    uint16
 	VAAddress                  int16
@@ -107,30 +106,35 @@ const (
 
 // Conformance block
 const (
-	ConformanceBlockReservedZero                = 0b100000000000000000000000
-	ConformanceBlockGeneralProtection           = 0b010000000000000000000000
-	ConformanceBlockGeneralBlockTransfer        = 0b001000000000000000000000
-	ConformanceBlockRead                        = 0b000100000000000000000000
-	ConformanceBlockWrite                       = 0b000010000000000000000000
-	ConformanceBlockUnconfirmedWrite            = 0b000001000000000000000000
-	ConformanceBlockReservedSix                 = 0b000000100000000000000000
-	ConformanceBlockReservedSeven               = 0b000000010000000000000000
-	ConformanceBlockAttribute0SupportedWithSet  = 0b000000001000000000000000
-	ConformanceBlockPriorityMgmtSupported       = 0b000000000100000000000000
-	ConformanceBlockAttribute0SupportedWithGet  = 0b000000000010000000000000
-	ConformanceBlockBlockTransferWithGetOrRead  = 0b000000000001000000000000
+	ConformanceBlockReservedZero         = 0b100000000000000000000000
+	ConformanceBlockGeneralProtection    = 0b010000000000000000000000
+	ConformanceBlockGeneralBlockTransfer = 0b001000000000000000000000
+	ConformanceBlockRead                 = 0b000100000000000000000000
+
+	ConformanceBlockWrite            = 0b000010000000000000000000
+	ConformanceBlockUnconfirmedWrite = 0b000001000000000000000000
+	ConformanceBlockReservedSix      = 0b000000100000000000000000
+	ConformanceBlockReservedSeven    = 0b000000010000000000000000
+
+	ConformanceBlockAttribute0SupportedWithSet = 0b000000001000000000000000
+	ConformanceBlockPriorityMgmtSupported      = 0b000000000100000000000000
+	ConformanceBlockAttribute0SupportedWithGet = 0b000000000010000000000000
+	ConformanceBlockBlockTransferWithGetOrRead = 0b000000000001000000000000
+
 	ConformanceBlockBlockTransferWithSetOrWrite = 0b000000000000100000000000
 	ConformanceBlockBlockTransferWithAction     = 0b000000000000010000000000
 	ConformanceBlockMultipleReferences          = 0b000000000000001000000000
 	ConformanceBlockInformationReport           = 0b000000000000000100000000
-	ConformanceBlockDataNotification            = 0b000000000000000010000000
-	ConformanceBlockAccess                      = 0b000000000000000001000000
-	ConformanceBlockParametrizedAccess          = 0b000000000000000000100000
-	ConformanceBlockGet                         = 0b000000000000000000010000
-	ConformanceBlockSet                         = 0b000000000000000000001000
-	ConformanceBlockSelectiveAccess             = 0b000000000000000000000100
-	ConformanceBlockEventNotification           = 0b000000000000000000000010
-	ConformanceBlockAction                      = 0b000000000000000000000001
+
+	ConformanceBlockDataNotification   = 0b000000000000000010000000
+	ConformanceBlockAccess             = 0b000000000000000001000000
+	ConformanceBlockParametrizedAccess = 0b000000000000000000100000
+	ConformanceBlockGet                = 0b000000000000000000010000
+
+	ConformanceBlockSet               = 0b000000000000000000001000
+	ConformanceBlockSelectiveAccess   = 0b000000000000000000000100
+	ConformanceBlockEventNotification = 0b000000000000000000000010
+	ConformanceBlockAction            = 0b000000000000000000000001
 )
 
 type aaretag struct {
@@ -138,7 +142,7 @@ type aaretag struct {
 	data []byte
 }
 
-type aareresponse struct {
+type AAResponse struct {
 	ApplicationContextName ApplicationContext
 	AssociationResult      AssociationResult
 	SourceDiagnostic       SourceDiagnostic
@@ -151,60 +155,89 @@ func putappctxname(dst *bytes.Buffer, settings *DlmsSettings) {
 	// not so exactly correct things, but for speed sake
 	dst.WriteByte(BERTypeContext | BERTypeConstructed | PduTypeApplicationContextName)
 	dst.Write([]byte{0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01})
-	switch settings.ApplicationContext {
+	switch settings.applicationContext {
 	case ApplicationContextLNNoCiphering:
 		dst.WriteByte(byte(ApplicationContextLNNoCiphering))
 	case ApplicationContextSNNoCiphering:
 		dst.WriteByte(byte(ApplicationContextSNNoCiphering))
-	default:
-		panic("unsupported")
+	case ApplicationContextLNCiphering:
+		dst.WriteByte(byte(ApplicationContextLNCiphering))
+	case ApplicationContextSNCiphering:
+		dst.WriteByte(byte(ApplicationContextSNCiphering))
 	}
 }
 
 func putmechname(dst *bytes.Buffer, settings *DlmsSettings) {
-	if settings.Authentication == AuthenticationNone {
+	if settings.authentication == AuthenticationNone {
 		return
 	}
 	dst.WriteByte(BERTypeContext | PduTypeMechanismName)
 	dst.Write([]byte{0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x02})
-	dst.WriteByte(byte(settings.Authentication))
+	dst.WriteByte(byte(settings.authentication))
 }
 
 func putsecvalues(dst *bytes.Buffer, settings *DlmsSettings) {
-	if settings.Authentication == AuthenticationNone {
+	if settings.authentication == AuthenticationNone {
 		return
-	} // todo sec values
-	encodetag2(dst, BERTypeContext|BERTypeConstructed|PduTypeCallingAuthenticationValue, 0x80, settings.Password)
+	}
+	encodetag2(dst, BERTypeContext|BERTypeConstructed|PduTypeCallingAuthenticationValue, 0x80, settings.password)
 }
 
-func createxdlms(dst *bytes.Buffer, settings *DlmsSettings) {
-	xdlms := make([]byte, 14)
-	xdlms[0] = 0x01
-	xdlms[1] = 0x00
-	xdlms[2] = 0x00
-	xdlms[3] = 0x00
-	xdlms[4] = 0x06
-	xdlms[5] = 0x5f
-	xdlms[6] = 0x1f
-	xdlms[7] = 0x04
-	xdlms[8] = 0x00 // overwritten, but who cares
-	// put conform
-	binary.BigEndian.PutUint32(xdlms[8:], uint32(settings.ConformanceBlock))
-	xdlms[12] = byte(settings.MaxPduRecvSize >> 8) // no limit in maximum received apdu length
-	xdlms[13] = byte(settings.MaxPduRecvSize)
+func putsystitle(dst *bytes.Buffer, settings *DlmsSettings) {
+	switch settings.authentication {
+	case AuthenticationHighGmac:
+		encodetag2(dst, BERTypeContext|BERTypeConstructed|PduTypeCallingAPTitle, 0x04, settings.systemtitle)
+	}
+}
 
+func (d *dlmsal) createxdlms(dst *bytes.Buffer) {
+	s := d.settings
+	var xdlms []byte
+	var subxdlms []byte
+	if s.usededicatedkey {
+		xdlms = make([]byte, 15+len(s.dedicatedkey))
+		xdlms[0] = 0x01
+		xdlms[1] = 0x01
+		xdlms[2] = byte(len(s.dedicatedkey))
+		copy(xdlms[3:], s.dedicatedkey)
+		subxdlms = xdlms[3+len(s.dedicatedkey):]
+	} else {
+		xdlms = make([]byte, 14)
+		xdlms[0] = 0x01
+		xdlms[1] = 0x00
+		subxdlms = xdlms[2:]
+	}
+	subxdlms[0] = 0x00
+	subxdlms[1] = 0x00
+	subxdlms[2] = 0x06
+	subxdlms[3] = 0x5f
+	subxdlms[4] = 0x1f
+	subxdlms[5] = 0x04
+	// put conform
+	binary.BigEndian.PutUint32(subxdlms[6:], uint32(s.ConformanceBlock))
+	subxdlms[10] = byte(s.MaxPduRecvSize >> 8) // no limit in maximum received apdu length
+	subxdlms[11] = byte(s.MaxPduRecvSize)
+
+	switch s.authentication {
+	case AuthenticationHighGmac: // encrypt this
+		xdlms = d.encryptpacket(byte(TagGloInitiateRequest), xdlms, false)
+	}
 	encodetag2(dst, BERTypeContext|BERTypeConstructed|PduTypeUserInformation, 0x04, xdlms)
 }
 
-func encodeaarq(settings *DlmsSettings) (out []byte, err error) {
+func (d *dlmsal) encodeaarq() (out []byte, err error) {
 	var buf bytes.Buffer
 	var content bytes.Buffer
+	s := d.settings
 
-	putappctxname(&content, settings)
-	encodetag(&content, BERTypeContext|PduTypeSenderAcseRequirements, []byte{0x07, 0x80})
-	putmechname(&content, settings)
-	putsecvalues(&content, settings)
-	createxdlms(&content, settings)
+	putappctxname(&content, s)
+	putsystitle(&content, s)
+	if s.authentication != AuthenticationNone {
+		encodetag(&content, BERTypeContext|PduTypeSenderAcseRequirements, []byte{0x07, 0x80})
+	}
+	putmechname(&content, s)
+	putsecvalues(&content, s)
+	d.createxdlms(&content)
 
 	encodetag(&buf, byte(TagAARQ), content.Bytes())
 	out = buf.Bytes()
@@ -277,59 +310,93 @@ func parseAPTitle(tag *aaretag, tmp *tmpbuffer) (out []byte, err error) {
 	if t != 0x04 {
 		return nil, fmt.Errorf("invalid A4 tag content")
 	}
-	out = make([]byte, len(d))
-	copy(out, d)
+	out = newcopy(d)
 	return
 }
 
-func parseUserInformation(tag *aaretag, tmp *tmpbuffer) (ir *initiateResponse, cse *confirmedServiceError, err error) {
+func parseSenderAcseRequirements(tag *aaretag, tmp *tmpbuffer) (stoc []byte, err error) {
+	if len(tag.data) < 2 {
+		return nil, fmt.Errorf("invalid AA tag length")
+	}
+	t, _, d, err := decodetag(tag.data, tmp)
+	if err != nil {
+		return nil, err
+	}
+	if t != 0x80 {
+		return nil, fmt.Errorf("invalid AA tag content")
+	}
+	stoc = newcopy(d)
+	return
+}
+
+func (al *dlmsal) parseUserInformation(tag *aaretag) (ir *initiateResponse, cse *confirmedServiceError, err error) {
 	if len(tag.data) < 6 {
 		err = fmt.Errorf("invalid BE tag length")
 		return
 	}
-	t, _, d, err := decodetag(tag.data, tmp)
+	t, _, d, err := decodetag(tag.data, &al.tmpbuffer)
 	if err != nil {
 		return nil, nil, err
 	}
 	if t != 0x04 {
 		return nil, nil, fmt.Errorf("invalid BE tag content")
 	}
+	return al.parseUserInformationtag(d)
+}
 
+func (al *dlmsal) parseUserInformationtag(d []byte) (ir *initiateResponse, cse *confirmedServiceError, err error) {
 	if d[0] == byte(TagInitiateResponse) {
-		ir, err := decodeInitiateResponse(d)
-		return &ir, nil, err
+		iir, err := decodeInitiateResponse(d[1:])
+		return &iir, nil, err
 	}
-
 	if d[0] == byte(TagConfirmedServiceError) {
-		cse, err := decodeConfirmedServiceError(d)
+		cse, err := decodeConfirmedServiceError(d[1:])
 		return nil, &cse, err
 	}
+	if d[0] == byte(TagGloConfirmedServiceError) { // artifical service error for now, not decoding inside of it
+		return nil, nil, fmt.Errorf("TagGloConfirmedServiceError returned")
+	}
+	if d[0] == byte(TagGloInitiateResponse) {
+		s := al.settings
+		if s.gcm == nil {
+			return nil, nil, fmt.Errorf("GCM not initialized")
+		}
+		enc := bytes.NewBuffer(d[1:])
+		ln, c, err := decodelength(enc, &al.tmpbuffer)
+		if err != nil {
+			return nil, nil, err
 
-	err = errors.New("unexpected user information tag")
+		}
+		d = d[1+c:]
+		if len(d) < int(ln) || ln < 5 {
+			return nil, nil, fmt.Errorf("invalid xDlms tag length")
+		}
+		decxdlms, err := al.decryptpacket(d, false)
+		if err != nil {
+			return nil, nil, err
+		}
+		return al.parseUserInformationtag(decxdlms)
+	}
+
+	err = fmt.Errorf("unexpected user information tag %02x", d[0])
 	return
 }
 
 func decodeInitiateResponse(src []byte) (out initiateResponse, err error) {
-	if len(src) < 14 {
-		if len(src) == 13 { // some units can return this shit, underlying array should be big enough to accomodate additional byte
-			src = src[:14] // this hack wont work if 0xbe tag is not the last one, ok, usually is the last one
+	if len(src) < 13 {
+		if len(src) == 12 && cap(src) > 12 { // some units can return this shit, underlying array should be big enough to accomodate additional byte
+			src = src[:13] // this hack wont work if 0xbe tag is not the last one, ok, usually is the last one
 		} else {
 			err = fmt.Errorf("invalid initial response length")
 			return
 		}
 	}
 
-	if src[0] != byte(TagInitiateResponse) {
-		err = fmt.Errorf("invalid initial response tag")
-		return
-	}
-
-	if src[1] == 0x01 {
-		negotiatedQualityOfService := src[2]
-		out.NegotiatedQualityOfService = &negotiatedQualityOfService
-		src = src[3:]
-	} else {
+	if src[0] == 0x01 {
+		out.NegotiatedQualityOfService = src[1]
 		src = src[2:]
+	} else {
+		src = src[1:]
 	}
 
 	if src[0] != DlmsVersion {
@@ -349,18 +416,13 @@ func decodeInitiateResponse(src []byte) (out initiateResponse, err error) {
 }
 
 func decodeConfirmedServiceError(src []byte) (out confirmedServiceError, err error) {
-	if len(src) < 4 {
+	if len(src) < 3 {
 		err = fmt.Errorf("invalid service error length")
 		return
 	}
 
-	if src[0] != byte(TagConfirmedServiceError) {
-		err = fmt.Errorf("invalid service error tag")
-		return
-	}
-
-	out.ConfirmedServiceError = confirmedServiceErrorTag(src[1])
-	out.ServiceError = serviceErrorTag(src[2])
-	out.Value = src[3]
+	out.ConfirmedServiceError = confirmedServiceErrorTag(src[0])
+	out.ServiceError = serviceErrorTag(src[1])
+	out.Value = src[2]
 	return
 }

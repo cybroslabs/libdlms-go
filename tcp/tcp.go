@@ -1,12 +1,10 @@
 package tcp
 
 import (
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/cybroslabs/libdlms-go/base"
@@ -134,7 +132,7 @@ func (t *tcp) Write(src []byte) error {
 		t.totaloutgoing += int64(n)
 
 		if t.logger != nil {
-			t.logger.Debugf("TX (%s): %6d %s", t.hostname, n, encodeHexString(src[:n]))
+			t.logger.Debugf(base.LogHex("TX", src[:n]))
 		}
 
 		src = src[n:]
@@ -179,7 +177,7 @@ func (t *tcp) Read(p []byte) (n int, err error) {
 		t.offset = n
 
 		if t.logger != nil {
-			t.logger.Debugf("RX (%s): %6d %s", t.hostname, rx, encodeHexString(t.buffer[:rx]))
+			t.logger.Debugf(base.LogHex("RX", t.buffer[:rx]))
 		}
 	}
 
@@ -194,8 +192,4 @@ func (t *tcp) Read(p []byte) (n int, err error) {
 
 func (t *tcp) GetRxTxBytes() (int64, int64) {
 	return t.totalincoming, t.totaloutgoing
-}
-
-func encodeHexString(b []byte) string {
-	return strings.ToUpper(hex.EncodeToString(b))
 }
