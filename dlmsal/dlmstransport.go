@@ -24,6 +24,10 @@ func (d *dlmsal) sendpdu() (tag CosemTag, str io.Reader, err error) {
 			tag = TagDedSetRequest
 		case TagActionRequest:
 			tag = TagDedActionRequest
+		case TagReadRequest:
+			tag = TagDedReadRequest
+		case TagWriteRequest:
+			tag = TagDedWriteRequest
 		default:
 			return tag, nil, fmt.Errorf("unsupported tag %v", b[0])
 		}
@@ -36,6 +40,10 @@ func (d *dlmsal) sendpdu() (tag CosemTag, str io.Reader, err error) {
 			tag = TagGloSetRequest
 		case TagActionRequest:
 			tag = TagGloActionRequest
+		case TagReadRequest:
+			tag = TagGloReadRequest
+		case TagWriteRequest:
+			tag = TagGloWriteRequest
 		default:
 			return tag, nil, fmt.Errorf("unsupported tag %v", b[0])
 		}
@@ -56,9 +64,9 @@ func (d *dlmsal) sendpdu() (tag CosemTag, str io.Reader, err error) {
 	}
 	tag = CosemTag(d.tmpbuffer[0])
 	switch {
-	case tag == TagGloGetResponse || tag == TagGloSetResponse || tag == TagGloActionResponse:
+	case tag == TagGloGetResponse || tag == TagGloSetResponse || tag == TagGloActionResponse || tag == TagGloReadResponse || tag == TagGloWriteResponse:
 		return d.recvcipheredpdu(tag, false)
-	case tag == TagDedGetResponse || tag == TagDedSetResponse || tag == TagDedActionResponse:
+	case tag == TagDedGetResponse || tag == TagDedSetResponse || tag == TagDedActionResponse || tag == TagDedReadResponse || tag == TagDedWriteResponse:
 		return d.recvcipheredpdu(tag, true)
 	}
 	return tag, d.transport, err

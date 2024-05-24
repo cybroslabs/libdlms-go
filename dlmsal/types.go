@@ -8,6 +8,33 @@ import (
 	"time"
 )
 
+type NumberType byte
+
+const (
+	SignedInt   NumberType = 0
+	UnsignedInt NumberType = 1
+	Real        NumberType = 2
+)
+
+type Number struct {
+	Type        NumberType
+	SignedInt   int64
+	UnsignedInt uint64
+	Real        float64
+}
+
+func (n *Number) String() string {
+	switch n.Type {
+	case SignedInt:
+		return fmt.Sprintf("%d", n.SignedInt)
+	case UnsignedInt:
+		return fmt.Sprintf("%d", n.UnsignedInt)
+	case Real:
+		return fmt.Sprintf("%f", n.Real)
+	}
+	return "invalid"
+}
+
 type DlmsDateTime struct {
 	Date      DlmsDate
 	Time      DlmsTime

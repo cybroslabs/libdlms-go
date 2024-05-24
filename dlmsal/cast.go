@@ -14,21 +14,6 @@ func Cast(trg interface{}, data DlmsData) error {
 	return recast(reflect.Indirect(r), &data)
 }
 
-type NumberType byte
-
-const (
-	SignedInt   NumberType = 0
-	UnsignedInt NumberType = 1
-	Real        NumberType = 2
-)
-
-type Number struct {
-	Type        NumberType
-	SignedInt   int64
-	UnsignedInt uint64
-	Real        float64
-}
-
 func recast(trg reflect.Value, data *DlmsData) error {
 	e := trg.Kind()
 	_, istime := trg.Interface().(time.Time)

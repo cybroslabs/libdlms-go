@@ -30,6 +30,10 @@ const (
 	TagSetResponse              CosemTag = 197
 	TagActionResponse           CosemTag = 199
 	// --- global ciphered pdus
+	TagGloReadRequest              CosemTag = 37
+	TagGloWriteRequest             CosemTag = 38
+	TagGloReadResponse             CosemTag = 44
+	TagGloWriteResponse            CosemTag = 45
 	TagGloGetRequest               CosemTag = 200
 	TagGloSetRequest               CosemTag = 201
 	TagGloEventNotificationRequest CosemTag = 202
@@ -38,6 +42,10 @@ const (
 	TagGloSetResponse              CosemTag = 205
 	TagGloActionResponse           CosemTag = 207
 	// --- dedicated ciphered pdus
+	TagDedReadRequest              CosemTag = 69
+	TagDedWriteRequest             CosemTag = 70
+	TagDedReadResponse             CosemTag = 76
+	TagDedWriteResponse            CosemTag = 77
 	TagDedGetRequest               CosemTag = 208
 	TagDedSetRequest               CosemTag = 209
 	TagDedEventNotificationRequest CosemTag = 210
@@ -84,6 +92,26 @@ const (
 	TagGetResponseNormal        getResponseTag = 0x1
 	TagGetResponseWithDataBlock getResponseTag = 0x2
 	TagGetResponseWithList      getResponseTag = 0x3
+)
+
+type setRequestTag byte
+
+const (
+	TagSetRequestNormal                    setRequestTag = 0x1
+	TagSetRequestWithFirstDataBlock        setRequestTag = 0x2
+	TagSetRequestWithDataBlock             setRequestTag = 0x3
+	TagSetRequestWithList                  setRequestTag = 0x4
+	TagSetRequestWithListAndFirstDataBlock setRequestTag = 0x5
+)
+
+type setResponseTag byte
+
+const (
+	TagSetResponseNormal                setResponseTag = 0x1
+	TagSetResponseDataBlock             setResponseTag = 0x2
+	TagSetResponseLastDataBlock         setResponseTag = 0x3
+	TagSetResponseLastDataBlockWithList setResponseTag = 0x4
+	TagSetResponseWithList              setResponseTag = 0x5
 )
 
 type actionRequestTag byte

@@ -69,7 +69,9 @@ type DlmsClient interface {
 	GetStream(item DlmsLNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error)
 	Read(items []DlmsSNRequestItem) ([]DlmsData, error)
 	ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error) // only for big single item queries
+	Write(items []DlmsSNRequestItem) ([]AccessResultTag, error)
 	Action(item DlmsLNRequestItem) (*DlmsData, error)
+	Set(items []DlmsLNRequestItem) ([]AccessResultTag, error)
 	LNAuthentication(checkresp bool) error
 }
 

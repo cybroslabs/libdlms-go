@@ -70,8 +70,8 @@ func (ln *dlmsalaction) actiondata(tag CosemTag) (data *DlmsData, err error) {
 		case TagActionResponse:
 		case TagExceptionResponse: // no lower layer readout
 			ln.state = 100
-			d := NewDlmsDataError(DlmsError{Result: TagAccOtherReason})
-			return &d, nil // dont decode exception pdu
+			d, err := decodeException(ln.transport, &master.tmpbuffer)
+			return &d, err // dont decode exception pdu
 		default:
 			return data, fmt.Errorf("unexpected tag: %02x", tag)
 		}
@@ -221,6 +221,10 @@ func (ln *dlmsalaction) Read(p []byte) (n int, err error) { // this will go to d
 
 // action part, only single action is supported, not list of actions, at least not yet, fuck support everything is a bit pointless
 func (d *dlmsal) Action(item DlmsLNRequestItem) (data *DlmsData, err error) { // todo blocking support in case of really big action
+	if !d.isopen {
+		return nil, base.ErrNotOpened
+	}
+
 	ln := &dlmsalaction{master: d, state: 0, blockexp: 0}
 	return ln.action(item)
 }

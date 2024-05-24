@@ -127,7 +127,12 @@ func (ln *dlmsalget) getstreamdata(tag CosemTag, inmem bool) (s DlmsDataStream, 
 	switch tag {
 	case TagGetResponse:
 	case TagExceptionResponse: // no lower layer readout
-		return nil, &DlmsError{Result: TagAccOtherReason}, nil // dont decode exception pdu, maybe todo, should be 2 bytes
+		d, err := decodeException(ln.transport, &master.tmpbuffer)
+		if err != nil {
+			return nil, nil, err
+		}
+		ex := d.Value.(DlmsError)
+		return nil, &ex, nil // dont decode exception pdu, maybe todo, should be 2 bytes
 	default:
 		return nil, nil, fmt.Errorf("unexpected tag: %02x", tag)
 	}
@@ -182,11 +187,12 @@ func (ln *dlmsalget) getnextdata(tag CosemTag, i int) (cont bool, err error) {
 		switch tag {
 		case TagGetResponse:
 		case TagExceptionResponse: // no lower layer readout
+			d, err := decodeException(ln.transport, &master.tmpbuffer)
 			for i := 0; i < len(ln.data); i++ {
-				ln.data[i] = NewDlmsDataError(DlmsError{Result: TagAccOtherReason}) // dont decode exception pdu
+				ln.data[i] = d
 			}
 			ln.state = 100
-			return true, nil
+			return true, err
 		default:
 			return false, fmt.Errorf("unexpected tag: %02x", tag)
 		}
@@ -261,6 +267,14 @@ func (ln *dlmsalget) getnextdata(tag CosemTag, i int) (cont bool, err error) {
 			if len(ln.data) == 1 {
 				ln.data[i], _, err = decodeDataTag(ln, &master.tmpbuffer)
 			} else { // with list, so read first byte to decide if there is an error and result byte or decode data
+				var l uint
+				l, _, err = decodelength(ln, &master.tmpbuffer)
+				if err != nil {
+					return false, err
+				}
+				if l != uint(len(ln.data)) {
+					return false, fmt.Errorf("different amount of data received")
+				}
 				err = ln.decodedata(i)
 			}
 			return false, err
@@ -384,11 +398,19 @@ func (ln *dlmsalget) Read(p []byte) (n int, err error) { // this will go to data
 }
 
 func (d *dlmsal) Get(items []DlmsLNRequestItem) ([]DlmsData, error) {
+	if !d.isopen {
+		return nil, base.ErrNotOpened
+	}
+
 	ln := &dlmsalget{master: d, state: 0, blockexp: 0}
 	return ln.get(items)
 }
 
 func (d *dlmsal) GetStream(item DlmsLNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error) {
+	if !d.isopen {
+		return nil, nil, base.ErrNotOpened
+	}
+
 	ln := &dlmsalget{master: d, state: 0, blockexp: 0}
 	return ln.getstream(item, inmem)
 }

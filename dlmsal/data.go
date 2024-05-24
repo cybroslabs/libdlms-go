@@ -457,6 +457,9 @@ func EncodeData(d DlmsData) ([]byte, error) {
 }
 
 func encodeData(out *bytes.Buffer, d *DlmsData) error {
+	if d == nil {
+		return fmt.Errorf("nil data") // no panic here
+	}
 	out.WriteByte(byte(d.Tag))
 	return encodeDatanoTag(out, d)
 }
