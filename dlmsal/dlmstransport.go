@@ -50,7 +50,7 @@ func (d *dlmsal) sendpdu() (tag CosemTag, str io.Reader, err error) {
 		b = d.encryptpacket(byte(tag), b, false)
 	}
 
-	if len(b) > d.maxPduSendSize {
+	if len(b) > d.maxPduSendSize && d.maxPduSendSize != 0 {
 		return tag, nil, fmt.Errorf("PDU size exceeds maximum size: %v > %v", len(b), d.maxPduSendSize)
 	}
 	err = d.transport.Write(b)

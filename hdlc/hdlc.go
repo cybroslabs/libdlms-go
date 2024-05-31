@@ -26,8 +26,8 @@ type maclayer struct {
 	physical       uint16
 	client         byte
 	logger         *zap.SugaredLogger
-	recvbuffer     []byte
-	sendbuffer     []byte
+	recvbuffer     [maxLength]byte
+	sendbuffer     [maxLength]byte
 	maxrcv         uint
 	maxsnd         uint
 	isopen         bool
@@ -35,7 +35,7 @@ type maclayer struct {
 	controlR       byte
 	tosend         int
 	state          int // 0 - start, 1 - writting, 2 - reading
-	packetsbuffer  []macpacket
+	packetsbuffer  [maxPackets]macpacket
 	toberead       []macpacket
 	tobereadpacket *macpacket
 	emptyframes    int
@@ -84,8 +84,6 @@ func New(transport base.Stream, settings *Settings) (base.Stream, error) {
 		physical:       settings.Physical, // lower
 		client:         settings.Client,
 		logger:         nil,
-		recvbuffer:     make([]byte, maxLength),
-		sendbuffer:     make([]byte, maxLength),
 		maxrcv:         settings.MaxRcv,
 		maxsnd:         settings.MaxSnd,
 		isopen:         false,
@@ -93,7 +91,6 @@ func New(transport base.Stream, settings *Settings) (base.Stream, error) {
 		controlR:       0,
 		tosend:         0,
 		state:          0,
-		packetsbuffer:  make([]macpacket, maxPackets),
 		toberead:       nil,
 		tobereadpacket: nil,
 		emptyframes:    0,
@@ -503,7 +500,7 @@ func (w *maclayer) readout() error {
 	// ok, using sndbuffer for receiving, because is not used during creating packet stream and i dont care about content
 	bcnt := maxReadoutBytes
 	for {
-		n, err := w.Read(w.sendbuffer)
+		n, err := w.Read(w.sendbuffer[:])
 		bcnt -= n
 		if err == io.EOF {
 			w.tosend = 0
@@ -574,9 +571,21 @@ var fcstab = [...]uint16{
 func mac_crc16(d []byte) uint16 {
 	c := uint16(0xffff)
 	for _, b := range d {
-		c = fcstab[(c^uint16(b))&0xff] ^ (c >> 8)
+		c = fcstab[byte(c)^b] ^ (c >> 8)
 	}
 	return c ^ 0xffff
+}
+
+func mac_crc16_r(d []byte, ih int) (hcs uint16, fcs uint16) {
+	c := uint16(0xffff)
+	for i := 0; i < ih; i++ {
+		c = fcstab[byte(c)^d[i]] ^ (c >> 8)
+	}
+	hcs = c ^ 0xffff
+	for i := ih; i < len(d); i++ {
+		c = fcstab[byte(c)^d[i]] ^ (c >> 8)
+	}
+	return hcs, c ^ 0xffff
 }
 
 // receive series of whole mac packets, no other way, from segmented tcp streaming, using rcvbuffer for first packet, extra memory for the rest
@@ -707,11 +716,6 @@ func (w *maclayer) parsepacket(ori []byte) (pck macpacket, err error) {
 	if len(ori) < 6 {
 		return pck, fmt.Errorf("too short packet")
 	}
-	// check HCS/FCS
-	fcs := mac_crc16(ori[:len(ori)-2])
-	if fcs != uint16(ori[len(ori)-2])|(uint16(ori[len(ori)-1])<<8) {
-		return pck, fmt.Errorf("fcs mismatch")
-	}
 
 	// check addresses
 	if ori[2]&1 == 0 {
@@ -763,13 +767,21 @@ func (w *maclayer) parsepacket(ori []byte) (pck macpacket, err error) {
 	case rem < 3:
 		return pck, fmt.Errorf("too short packet")
 	case rem == 3: // just fcs and no info
+		// check FCS
+		fcs := mac_crc16(ori[:len(ori)-2])
+		if fcs != uint16(ori[len(ori)-2])|(uint16(ori[len(ori)-1])<<8) {
+			return pck, fmt.Errorf("fcs mismatch")
+		}
 		return pck, nil
 	case rem == 4:
 		return pck, fmt.Errorf("invalid packet length")
 	default: // having some info
-		fcs = mac_crc16(ori[:offset+1])
-		if fcs != uint16(ori[offset+1])|(uint16(ori[offset+2])<<8) {
+		hcs, fcs := mac_crc16_r(ori[:len(ori)-2], offset+1)
+		if hcs != uint16(ori[offset+1])|(uint16(ori[offset+2])<<8) {
 			return pck, fmt.Errorf("hcs mismatch")
+		}
+		if fcs != uint16(ori[len(ori)-2])|(uint16(ori[len(ori)-1])<<8) {
+			return pck, fmt.Errorf("fcs mismatch")
 		}
 		pck.info = ori[offset+3 : len(ori)-2] // dont copy, keep slice so wasting memory for crc and header
 	}
@@ -790,39 +802,54 @@ func (w *maclayer) getaddresslength() int {
 	return 4
 }
 
+func mac_crc16_w(d []byte, ih int) uint16 {
+	c := uint16(0xffff)
+	for i := 0; i < ih; i++ {
+		c = fcstab[byte(c)^d[i]] ^ (c >> 8)
+	}
+	hcs := c ^ 0xffff
+	d[ih] = byte(hcs)
+	d[ih+1] = byte(hcs >> 8)
+
+	for i := ih; i < len(d); i++ {
+		c = fcstab[byte(c)^d[i]] ^ (c >> 8)
+	}
+	return c ^ 0xffff
+}
+
 func (w *maclayer) writepacket(packet macpacket, final bool) (err error) {
 	if !w.canwrite {
 		return fmt.Errorf("cannot write right now")
 	}
 
-	var pstart int
 	addrlen := w.getaddresslength()
 
+	var pck []byte
 	switch addrlen {
 	case 1:
 		w.sendbuffer[6] = byte(w.logical<<1) | 1
-		pstart = 3
+		pck = w.sendbuffer[3:]
 	case 2:
 		w.sendbuffer[5] = byte(w.logical << 1)
 		w.sendbuffer[6] = byte(w.physical<<1) | 1
-		pstart = 2
+		pck = w.sendbuffer[2:]
 	case 4:
 		w.sendbuffer[3] = byte(w.logical>>7) << 1
 		w.sendbuffer[4] = byte(w.logical << 1)
 		w.sendbuffer[5] = byte(w.physical>>7) << 1
 		w.sendbuffer[6] = byte(w.physical<<1) | 1
-		pstart = 0
+		pck = w.sendbuffer[:]
 	default:
 		return fmt.Errorf("invalid address length, programatic error")
 	}
 
-	w.sendbuffer[pstart] = 0x7e
-	offset := 7 // address + header + 0x7e
-	w.sendbuffer[offset] = byte(w.client<<1) | 1
+	pck[0] = 0x7e
+	offset := 3 + addrlen // address + header + 0x7e
+	pck[offset] = byte(w.client<<1) | 1
 	offset++
-	w.sendbuffer[offset] = packet.control
+	pck[offset] = packet.control
 	if final {
-		w.sendbuffer[offset] |= 0x10
+		pck[offset] |= 0x10
 	}
 	offset++
 	ilen := packet.inlinelength
@@ -836,41 +863,36 @@ func (w *maclayer) writepacket(packet macpacket, final bool) (err error) {
 		if leni > 0x7ff {
 			return fmt.Errorf("too long packet to encode")
 		}
-		w.sendbuffer[pstart+1] = 0xa0 | byte(leni>>8)
+		pck[1] = 0xa0 | byte(leni>>8)
 		if packet.segmented {
-			w.sendbuffer[pstart+1] |= 8
+			pck[1] |= 8
 		}
-		w.sendbuffer[pstart+2] = byte(leni)
-		fcs := mac_crc16(w.sendbuffer[pstart+1 : offset])
-		w.sendbuffer[offset] = byte(fcs)
-		offset++
-		w.sendbuffer[offset] = byte(fcs >> 8)
-		offset++
-
+		pck[2] = byte(leni)
+		offset += 2
 		if pcopy {
-			copy(w.sendbuffer[offset:], packet.info)
+			copy(pck[offset:], packet.info)
 		}
 		offset += ilen
-		fcs = mac_crc16(w.sendbuffer[pstart+1 : offset])
-		w.sendbuffer[offset] = byte(fcs)
+		fcs := mac_crc16_w(pck[1:offset], offset-3-ilen)
+		pck[offset] = byte(fcs)
 		offset++
-		w.sendbuffer[offset] = byte(fcs >> 8)
+		pck[offset] = byte(fcs >> 8)
 		offset++
 	} else { // only single crc here (FCS)
-		w.sendbuffer[pstart+1] = 0xa0
+		pck[1] = 0xa0
 		if packet.segmented {
-			w.sendbuffer[pstart+1] |= 8
+			pck[1] |= 8
 		}
-		w.sendbuffer[pstart+2] = byte(offset + 1)
-		fcs := mac_crc16(w.sendbuffer[pstart+1 : offset])
-		w.sendbuffer[offset] = byte(fcs)
+		pck[2] = byte(offset + 1)
+		fcs := mac_crc16(pck[1:offset])
+		pck[offset] = byte(fcs)
 		offset++
-		w.sendbuffer[offset] = byte(fcs >> 8)
+		pck[offset] = byte(fcs >> 8)
 		offset++
 	}
-	w.sendbuffer[offset] = 0x7e
+	pck[offset] = 0x7e
 	offset++
 
 	w.canwrite = !final // no windowing yet
-	return w.transport.Write(w.sendbuffer[pstart:offset])
+	return w.transport.Write(pck[:offset])
 }
