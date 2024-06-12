@@ -125,13 +125,13 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 			}
 			val := make([]bool, l)
 			off := uint(0)
+		E:
 			for i := uint(0); i < blen; i++ {
 				for j := uint(0); j < 8; j++ {
 					val[off] = (tmp[i] & (1 << (7 - j))) != 0
 					off++
 					if off >= l {
-						i = blen
-						break
+						break E
 					}
 				}
 			}
