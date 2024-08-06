@@ -1,6 +1,6 @@
 module github.com/cybroslabs/libdlms-go
 
-go 1.22.0
+go 1.22.5
 
 require go.uber.org/zap v1.27.0
 
