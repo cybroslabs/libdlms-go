@@ -234,7 +234,7 @@ func (d *dlmsal) Close() error {
 		return err
 	}
 
-	return nil
+	return d.transport.Close()
 }
 
 func (d *dlmsal) Disconnect() error {
