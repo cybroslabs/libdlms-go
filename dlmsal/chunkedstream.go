@@ -1,8 +1,13 @@
 package dlmsal
 
 import (
+	"errors"
 	"fmt"
 	"io"
+)
+
+const (
+	memchunksize = 4096
 )
 
 type ChunkedStream interface {
@@ -10,101 +15,86 @@ type ChunkedStream interface {
 	Write(p []byte) (n int, err error)
 	CopyFrom(src io.Reader) (err error)
 	Rewind()
-	Clear()
+}
+
+type chunkitem struct {
+	data [memchunksize]byte
+	size int
+	next *chunkitem
 }
 
 type chunkedstream struct {
-	buffers [][]byte
-	offset  int
-	size    int
+	first  *chunkitem
+	last   *chunkitem
+	curr   *chunkitem
+	offset int
 }
 
 func (d *chunkedstream) Rewind() {
 	d.offset = 0
+	d.curr = d.first
 }
 
 func (d *chunkedstream) CopyFrom(src io.Reader) (err error) {
-	var rem int
-	var l int
-	if len(d.buffers) == 0 {
-		d.buffers = make([][]byte, 1)
-		d.buffers[0] = make([]byte, memchunksize)
-		rem = memchunksize
-		l = 0
-	} else {
-		l = len(d.buffers) - 1
-		rem = cap(d.buffers[l]) - len(d.buffers[l])
-		if rem != 0 {
-			d.buffers[l] = d.buffers[l][:memchunksize]
-		}
-	}
-	var n int
 	for {
-		if rem == 0 { // i have to append something
-			d.buffers = append(d.buffers, make([]byte, memchunksize))
-			l++
-			rem = memchunksize
+		if d.offset == memchunksize { // a new chunk
+			d.last.next = &chunkitem{}
+			d.last = d.last.next
+			d.curr = d.last
+			d.offset = 0
 		}
-		n, err = src.Read(d.buffers[l][memchunksize-rem:])
-		d.size += n
-		rem -= n
+		n, err := src.Read(d.curr.data[d.offset:])
+		d.offset += n
+		d.curr.size = d.offset
 		if err != nil {
-			d.buffers[l] = d.buffers[l][:memchunksize-rem]
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return err
 		}
-		if n == 0 {
-			d.buffers[l] = d.buffers[l][:memchunksize-rem]
-			return fmt.Errorf("no data read") // that shouldnt happen
+		if n == 0 { // that shouldnt happen
+			return fmt.Errorf("no data read")
 		}
 	}
-}
-
-func (d *chunkedstream) Clear() {
-	if len(d.buffers) > 0 { // reuse the first chunk
-		d.buffers = d.buffers[:1]
-		d.buffers[0] = d.buffers[0][:0]
-	}
-	d.offset = 0
-	d.size = 0
 }
 
 func (d *chunkedstream) Write(p []byte) (n int, err error) { // always write everything, panic in case out of memory
-	var nn int
-	n = d.size
-	if len(d.buffers) == 0 {
-		d.buffers = make([][]byte, 1)
-		d.buffers[0] = make([]byte, 0, memchunksize)
-	}
-	l := len(d.buffers) - 1
+	n = len(p)
 	for len(p) > 0 {
-		nn = cap(d.buffers[l]) - len(d.buffers[l])
-		if nn == 0 {
-			d.buffers = append(d.buffers, make([]byte, 0, memchunksize))
-			l++
-			nn = memchunksize
+		if d.offset == memchunksize { // a new chunk
+			d.last.next = &chunkitem{}
+			d.last = d.last.next
+			d.curr = d.last
+			d.offset = 0
 		}
-		if nn > len(p) {
-			nn = len(p)
-		}
-		d.buffers[l] = append(d.buffers[l], p[:nn]...)
-		d.size += nn
+		// having at least some space in d.curr
+		nn := copy(d.curr.data[d.offset:], p)
+		d.offset += nn
+		d.curr.size = d.offset
 		p = p[nn:]
 	}
-	return d.size - n, nil
+	return
 }
 
 func (d *chunkedstream) Read(p []byte) (n int, err error) {
-	if d.offset == d.size {
+	if d.curr == nil {
 		return 0, io.EOF
 	}
-	n = copy(p, d.buffers[d.offset>>memchunkbits][d.offset&(memchunksize-1):])
+	if d.offset == d.curr.size {
+		d.offset = 0
+		d.curr = d.curr.next
+		return d.Read(p)
+	}
+
+	n = copy(p, d.curr.data[d.offset:d.curr.size])
 	d.offset += n
 	return
 }
 
 func NewChunkedStream() ChunkedStream {
-	return &chunkedstream{offset: 0, size: 0}
+	ret := &chunkedstream{}
+	ret.first = &chunkitem{}
+	ret.last = ret.first
+	ret.curr = ret.first
+	return ret
 }

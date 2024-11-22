@@ -10,11 +10,6 @@ import (
 type streamItemType byte
 
 const (
-	memchunksize = 4096
-	memchunkbits = 12
-)
-
-const (
 	StreamElementStart streamItemType = iota
 	StreamElementEnd
 	StreamElementData
