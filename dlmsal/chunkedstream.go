@@ -36,18 +36,16 @@ func (d *chunkedstream) Rewind() {
 }
 
 func (d *chunkedstream) CopyFrom(src io.Reader) (err error) {
+	curr := d.curr
 	for {
-		if d.offset == memchunksize { // a new chunk
+		if curr.size == memchunksize { // a new chunk
 			d.last.next = &chunkitem{}
 			d.last = d.last.next
-			d.curr = d.last
-			d.offset = 0
+			curr = d.last
 		}
-		n, err := src.Read(d.curr.data[d.offset:])
-		d.offset += n
-		d.curr.size = d.offset
+		n, err := src.Read(curr.data[curr.size:])
+		curr.size += n
 		if err != nil {
-			d.Rewind()
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
