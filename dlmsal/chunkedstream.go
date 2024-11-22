@@ -47,13 +47,14 @@ func (d *chunkedstream) CopyFrom(src io.Reader) (err error) {
 		d.offset += n
 		d.curr.size = d.offset
 		if err != nil {
+			d.Rewind()
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			return err
 		}
 		if n == 0 { // that shouldnt happen
-			return fmt.Errorf("no data read")
+			panic(fmt.Errorf("no data read"))
 		}
 	}
 }
