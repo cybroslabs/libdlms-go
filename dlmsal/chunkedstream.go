@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	memchunksize = 4096
+	memchunksize = 8192
 )
 
 type ChunkedStream interface {
