@@ -8,7 +8,7 @@ import (
 
 func Cast(trg interface{}, data DlmsData) error {
 	r := reflect.ValueOf(trg)
-	if r.Kind() != reflect.Ptr || r.IsNil() {
+	if r.Kind() != reflect.Pointer || r.IsNil() {
 		return fmt.Errorf("target must be a non-nil pointer")
 	}
 	return recast(reflect.Indirect(r), &data)
@@ -89,7 +89,7 @@ func recast(trg reflect.Value, data *DlmsData) error {
 		return recastnumber(trg, data)
 	}
 	switch {
-	case e == reflect.Ptr:
+	case e == reflect.Pointer:
 		elem := reflect.New(trg.Type().Elem())
 		err := recast(reflect.Indirect(elem), data)
 		if err != nil {
@@ -131,7 +131,7 @@ func recaststruct(trg reflect.Value, data *DlmsData) error {
 			}
 
 			field := trg.Field(i)
-			if field.Kind() == reflect.Ptr {
+			if field.Kind() == reflect.Pointer {
 				if v[i].Tag != TagNull && field.IsNil() {
 					field.Set(reflect.New(field.Type().Elem()))
 				}
@@ -139,6 +139,8 @@ func recaststruct(trg reflect.Value, data *DlmsData) error {
 				if v[i].Tag == TagNull && !field.IsNil() {
 					field.Set(reflect.Zero(field.Type()))
 				}
+			} else if v[i].Tag == TagNull {
+				return fmt.Errorf("field %s is not a pointer, but has null tag in data", trg.Type().Field(i).Name)
 			}
 
 			if v[i].Tag != TagNull {
@@ -176,7 +178,7 @@ func recastslice(trg reflect.Value, data *DlmsData) error {
 		}
 		for i := 0; i < len(v); i++ {
 			vv := trg.Index(i)
-			if vv.Kind() == reflect.Ptr && vv.IsNil() {
+			if vv.Kind() == reflect.Pointer && vv.IsNil() {
 				vv.Set(reflect.New(vv.Type().Elem()))
 			}
 			err := recast(reflect.Indirect(vv), &v[i])
