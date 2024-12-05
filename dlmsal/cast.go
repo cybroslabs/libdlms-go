@@ -61,7 +61,7 @@ func recast(trg reflect.Value, data *DlmsData) error {
 			if err != nil {
 				return nil
 			}
-			trg.Set(reflect.ValueOf(*bb))
+			trg.Set(reflect.ValueOf(bb))
 		case DlmsDateTime:
 			trg.Set(reflect.ValueOf(b))
 		default:
@@ -79,7 +79,7 @@ func recast(trg reflect.Value, data *DlmsData) error {
 			if err != nil {
 				return err
 			}
-			trg.Set(reflect.ValueOf(*bb))
+			trg.Set(reflect.ValueOf(bb))
 		default:
 			return fmt.Errorf("invalid source type %T for obis", data.Value)
 		}

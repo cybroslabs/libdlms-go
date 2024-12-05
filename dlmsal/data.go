@@ -524,12 +524,12 @@ func encodeDatanoTag(out *bytes.Buffer, d *DlmsData) error {
 func encodeDateTime(out *bytes.Buffer, d *DlmsData) error { // refactor this a bit
 	switch t := d.Value.(type) {
 	case time.Time:
-		dt := NewDlmsDateTimeFromTime(&t)
+		dt := NewDlmsDateTimeFromTime(t)
 		encodedatetime(out, dt)
 	case DlmsDateTime:
-		encodedatetime(out, &t)
-	case *DlmsDateTime:
 		encodedatetime(out, t)
+	case *DlmsDateTime:
+		encodedatetime(out, *t)
 	default:
 		return fmt.Errorf("unsupported data type for date time: %T", d.Value)
 	}
@@ -539,9 +539,9 @@ func encodeDateTime(out *bytes.Buffer, d *DlmsData) error { // refactor this a b
 func encodeDate(out *bytes.Buffer, d *DlmsData) error {
 	switch t := d.Value.(type) {
 	case DlmsDate:
-		encodedate(out, &t)
-	case *DlmsDate:
 		encodedate(out, t)
+	case *DlmsDate:
+		encodedate(out, *t)
 	default:
 		return fmt.Errorf("unsupported data type for date: %T", d.Value)
 	}
@@ -551,9 +551,9 @@ func encodeDate(out *bytes.Buffer, d *DlmsData) error {
 func encodeTime(out *bytes.Buffer, d *DlmsData) error {
 	switch t := d.Value.(type) {
 	case DlmsTime:
-		encodetime(out, &t)
-	case *DlmsTime:
 		encodetime(out, t)
+	case *DlmsTime:
+		encodetime(out, *t)
 	default:
 		return fmt.Errorf("unsupported data type for time: %T", d.Value)
 	}
@@ -734,16 +734,16 @@ func encodeOctetString(out *bytes.Buffer, d *DlmsData) error {
 		out.Write(t)
 	case DlmsDateTime:
 		encodelength(out, 12)
-		encodedatetime(out, &t)
+		encodedatetime(out, t)
 	case *DlmsDateTime:
 		encodelength(out, 12)
-		encodedatetime(out, t)
+		encodedatetime(out, *t)
 	case DlmsObis:
-		encodeobis(out, &t)
-	case *DlmsObis:
 		encodeobis(out, t)
+	case *DlmsObis:
+		encodeobis(out, *t)
 	case time.Time:
-		dt := NewDlmsDateTimeFromTime(&t)
+		dt := NewDlmsDateTimeFromTime(t)
 		encodedatetime(out, dt)
 	default:
 		return fmt.Errorf("unsupported data type for octet string: %T", d.Value)
@@ -751,7 +751,7 @@ func encodeOctetString(out *bytes.Buffer, d *DlmsData) error {
 	return nil
 }
 
-func encodeobis(out *bytes.Buffer, t *DlmsObis) {
+func encodeobis(out *bytes.Buffer, t DlmsObis) {
 	encodelength(out, 6)
 	out.WriteByte(t.A)
 	out.WriteByte(t.B)
@@ -761,14 +761,14 @@ func encodeobis(out *bytes.Buffer, t *DlmsObis) {
 	out.WriteByte(t.F)
 }
 
-func encodetime(out *bytes.Buffer, t *DlmsTime) {
+func encodetime(out *bytes.Buffer, t DlmsTime) {
 	out.WriteByte(t.Hour)
 	out.WriteByte(t.Minute)
 	out.WriteByte(t.Second)
 	out.WriteByte(t.Hundredths)
 }
 
-func encodedate(out *bytes.Buffer, t *DlmsDate) {
+func encodedate(out *bytes.Buffer, t DlmsDate) {
 	out.WriteByte(byte(t.Year >> 8))
 	out.WriteByte(byte(t.Year))
 	out.WriteByte(t.Month)
@@ -776,9 +776,9 @@ func encodedate(out *bytes.Buffer, t *DlmsDate) {
 	out.WriteByte(t.DayOfWeek)
 }
 
-func encodedatetime(out *bytes.Buffer, t *DlmsDateTime) {
-	encodedate(out, &t.Date)
-	encodetime(out, &t.Time)
+func encodedatetime(out *bytes.Buffer, t DlmsDateTime) {
+	encodedate(out, t.Date)
+	encodetime(out, t.Time)
 	out.WriteByte(byte(t.Deviation >> 8))
 	out.WriteByte(byte(t.Deviation))
 	out.WriteByte(t.Status)

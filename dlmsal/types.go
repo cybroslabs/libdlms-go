@@ -74,13 +74,13 @@ func (t *DlmsDateTime) EncodeToDlms(dst *bytes.Buffer) {
 	dst.WriteByte(t.Status)
 }
 
-func NewDlmsDateTimeFromTime(src *time.Time) *DlmsDateTime {
+func NewDlmsDateTimeFromTime(src time.Time) DlmsDateTime {
 	wd := byte(src.Weekday())
 	if wd == 0 {
 		wd = 7
 	}
 	_, off := src.Zone()
-	return &DlmsDateTime{
+	return DlmsDateTime{
 		Date:      DlmsDate{Year: uint16(src.Year()), Month: byte(src.Month()), Day: byte(src.Day()), DayOfWeek: wd},
 		Time:      DlmsTime{Hour: byte(src.Hour()), Minute: byte(src.Minute()), Second: byte(src.Second()), Hundredths: byte(src.Nanosecond() / 10000000)},
 		Deviation: int16(off / 60),
@@ -88,11 +88,12 @@ func NewDlmsDateTimeFromTime(src *time.Time) *DlmsDateTime {
 	}
 }
 
-func NewDlmsDateTimeFromSlice(src []byte) (*DlmsDateTime, error) {
+func NewDlmsDateTimeFromSlice(src []byte) (val DlmsDateTime, err error) {
 	if len(src) < 12 {
-		return nil, fmt.Errorf("invalid length")
+		err = fmt.Errorf("invalid length")
+		return
 	}
-	return &DlmsDateTime{
+	return DlmsDateTime{
 		Date:      DlmsDate{Year: uint16(src[0])<<8 | uint16(src[1]), Month: src[2], Day: src[3], DayOfWeek: src[4]},
 		Time:      DlmsTime{Hour: src[5], Minute: src[6], Second: src[7], Hundredths: src[8]},
 		Deviation: int16(src[9])<<8 | int16(src[10]),
@@ -135,25 +136,27 @@ func (o *DlmsObis) EqualTo(o2 *DlmsObis) bool {
 	return o.A == o2.A && o.B == o2.B && o.C == o2.C && o.D == o2.D && o.E == o2.E && o.F == o2.F
 }
 
-func NewDlmsObisFromSlice(src []byte) (*DlmsObis, error) {
+func NewDlmsObisFromSlice(src []byte) (ob DlmsObis, err error) {
 	if len(src) < 6 {
-		return nil, fmt.Errorf("invalid length")
+		err = fmt.Errorf("invalid length")
+		return
 	}
-	return &DlmsObis{A: src[0], B: src[1], C: src[2], D: src[3], E: src[4], F: src[5]}, nil
+	return DlmsObis{A: src[0], B: src[1], C: src[2], D: src[3], E: src[4], F: src[5]}, nil
 }
 
 func mustatoi(s string) int {
 	i, err := strconv.Atoi(s)
 	if err != nil {
-		panic(err)
+		panic(err) // really shouldnt happen
 	}
 	return i
 }
 
-func NewDlmsObisFromString(src string) (*DlmsObis, error) {
+func NewDlmsObisFromString(src string) (ob DlmsObis, err error) {
 	rg := regexp.MustCompile(`^(\d+)-(\d+):(\d+)\.(\d+)\.(\d+)\.(\d+)$`)
 	if !rg.MatchString(src) {
-		return nil, fmt.Errorf("invalid format")
+		err = fmt.Errorf("invalid format")
+		return
 	}
 	m := rg.FindStringSubmatch(src)
 	a := mustatoi(m[1])
@@ -162,8 +165,15 @@ func NewDlmsObisFromString(src string) (*DlmsObis, error) {
 	d := mustatoi(m[4])
 	e := mustatoi(m[5])
 	f := mustatoi(m[6])
-	if a < 0 || b < 0 || c < 0 || d < 0 || e < 0 || f < 0 || a > 255 || b > 255 || c > 255 || d > 255 || e > 255 || f > 255 {
-		return nil, fmt.Errorf("invalid value")
+	if a > 255 || b > 255 || c > 255 || d > 255 || e > 255 || f > 255 {
+		err = fmt.Errorf("invalid value")
+		return
 	}
-	return &DlmsObis{A: byte(a), B: byte(b), C: byte(c), D: byte(d), E: byte(e), F: byte(f)}, nil
+	ob.A = byte(a)
+	ob.B = byte(b)
+	ob.C = byte(c)
+	ob.D = byte(d)
+	ob.E = byte(e)
+	ob.F = byte(f)
+	return
 }
