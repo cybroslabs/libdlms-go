@@ -126,26 +126,27 @@ func recaststruct(trg reflect.Value, data *DlmsData) error {
 		}
 
 		for i := 0; i < n; i++ {
-			if !trg.Type().Field(i).IsExported() {
-				return fmt.Errorf("field %s is not exported", trg.Type().Field(i).Name)
-			}
+			// if !trg.Type().Field(i).IsExported() {
+			// 	return fmt.Errorf("field %s is not exported", trg.Type().Field(i).Name)
+			// }
+			if trg.Type().Field(i).IsExported() { // fill only exported (public) fields
+				field := trg.Field(i)
+				if field.Kind() == reflect.Pointer {
+					if v[i].Tag != TagNull && field.IsNil() {
+						field.Set(reflect.New(field.Type().Elem()))
+					}
 
-			field := trg.Field(i)
-			if field.Kind() == reflect.Pointer {
-				if v[i].Tag != TagNull && field.IsNil() {
-					field.Set(reflect.New(field.Type().Elem()))
+					if v[i].Tag == TagNull && !field.IsNil() {
+						field.Set(reflect.Zero(field.Type()))
+					}
+				} else if v[i].Tag == TagNull {
+					return fmt.Errorf("field %s is not a pointer, but has null tag in data", trg.Type().Field(i).Name)
 				}
 
-				if v[i].Tag == TagNull && !field.IsNil() {
-					field.Set(reflect.Zero(field.Type()))
-				}
-			} else if v[i].Tag == TagNull {
-				return fmt.Errorf("field %s is not a pointer, but has null tag in data", trg.Type().Field(i).Name)
-			}
-
-			if v[i].Tag != TagNull {
-				if err := recast(reflect.Indirect(field), &v[i]); err != nil {
-					return fmt.Errorf("struct error in field %s: %w", trg.Type().Field(i).Name, err)
+				if v[i].Tag != TagNull {
+					if err := recast(reflect.Indirect(field), &v[i]); err != nil {
+						return fmt.Errorf("struct error in field %s: %w", trg.Type().Field(i).Name, err)
+					}
 				}
 			}
 		}
