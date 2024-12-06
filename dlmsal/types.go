@@ -132,7 +132,7 @@ func (o *DlmsObis) Bytes() []byte {
 	return []byte{o.A, o.B, o.C, o.D, o.E, o.F}
 }
 
-func (o *DlmsObis) EqualTo(o2 *DlmsObis) bool {
+func (o *DlmsObis) EqualTo(o2 DlmsObis) bool {
 	return o.A == o2.A && o.B == o2.B && o.C == o2.C && o.D == o2.D && o.E == o2.E && o.F == o2.F
 }
 
