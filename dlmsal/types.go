@@ -8,31 +8,44 @@ import (
 	"time"
 )
 
-type NumberType byte
+type ValueType byte
 
 const (
-	SignedInt   NumberType = 0
-	UnsignedInt NumberType = 1
-	Real        NumberType = 2
+	SignedInt   ValueType = 0   // int64
+	UnsignedInt ValueType = 1   // uint64
+	Real        ValueType = 2   // float64
+	String      ValueType = 3   // string
+	DateTime    ValueType = 4   // DlmsDateTime
+	Boolean     ValueType = 5   // bool
+	Unknown     ValueType = 255 // nil
 )
 
-type Number struct {
-	Type        NumberType
-	SignedInt   int64
-	UnsignedInt uint64
-	Real        float64
+type Value struct {
+	Type  ValueType
+	Value interface{}
 }
 
-func (n *Number) String() string {
+func (n *Value) ToString() string {
 	switch n.Type {
 	case SignedInt:
-		return fmt.Sprintf("%d", n.SignedInt)
+		return fmt.Sprintf("%d", n.Value.(int64))
 	case UnsignedInt:
-		return fmt.Sprintf("%d", n.UnsignedInt)
+		return fmt.Sprintf("%d", n.Value.(uint64))
 	case Real:
-		return fmt.Sprintf("%f", n.Real)
+		return fmt.Sprintf("%f", n.Value.(float64))
+	case String:
+		return n.Value.(string)
+	case DateTime:
+		v := n.Value.(DlmsDateTime)
+		r, err := v.ToTime()
+		if err != nil {
+			break
+		}
+		return r.String()
+	case Boolean:
+		return fmt.Sprintf("%t", n.Value.(bool))
 	}
-	return "invalid"
+	return "invalid" // questionable
 }
 
 type DlmsDateTime struct {

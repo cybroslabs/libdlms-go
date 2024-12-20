@@ -20,7 +20,7 @@ func recast(trg reflect.Value, data *DlmsData) error {
 	_, isdlmstime := trg.Interface().(DlmsDateTime)
 	_, isobis := trg.Interface().(DlmsObis)
 	_, isdlmsdata := trg.Interface().(DlmsData)
-	_, isnumber := trg.Interface().(Number)
+	_, isvalue := trg.Interface().(Value)
 	if isdlmsdata {
 		trg.Set(reflect.ValueOf(*data))
 		return nil
@@ -85,8 +85,8 @@ func recast(trg reflect.Value, data *DlmsData) error {
 		}
 		return nil
 	}
-	if isnumber {
-		return recastnumber(trg, data)
+	if isvalue {
+		return recastvalue(trg, data)
 	}
 	switch {
 	case e == reflect.Pointer:
@@ -207,48 +207,66 @@ func recaststring(trg reflect.Value, data *DlmsData) error {
 	return fmt.Errorf("unexpected type %T", data.Value)
 }
 
-func recastnumber(trg reflect.Value, data *DlmsData) error {
-	number := Number{Type: UnsignedInt, UnsignedInt: 0}
-	switch v := data.Value.(type) {
+func recastvalue(trg reflect.Value, data *DlmsData) error {
+	value := Value{Type: Unknown}
+	switch v := data.Value.(type) { // Tag should be also considered
 	case bool:
-		if v {
-			number.UnsignedInt = 1
-		}
+		value.Type = Boolean
+		value.Value = v
 	case int:
-		number.Type = SignedInt
-		number.SignedInt = int64(v)
+		value.Type = SignedInt
+		value.Value = int64(v)
 	case int8:
-		number.Type = SignedInt
-		number.SignedInt = int64(v)
+		value.Type = SignedInt
+		value.Value = int64(v)
 	case int16:
-		number.Type = SignedInt
-		number.SignedInt = int64(v)
+		value.Type = SignedInt
+		value.Value = int64(v)
 	case int32:
-		number.Type = SignedInt
-		number.SignedInt = int64(v)
+		value.Type = SignedInt
+		value.Value = int64(v)
 	case int64:
-		number.Type = SignedInt
-		number.SignedInt = v
+		value.Type = SignedInt
+		value.Value = v
 	case uint:
-		number.UnsignedInt = uint64(v)
+		value.Type = UnsignedInt
+		value.Value = uint64(v)
 	case uint8:
-		number.UnsignedInt = uint64(v)
+		value.Type = UnsignedInt
+		value.Value = uint64(v)
 	case uint16:
-		number.UnsignedInt = uint64(v)
+		value.Type = UnsignedInt
+		value.Value = uint64(v)
 	case uint32:
-		number.UnsignedInt = uint64(v)
+		value.Type = UnsignedInt
+		value.Value = uint64(v)
 	case uint64:
-		number.UnsignedInt = v
+		value.Type = UnsignedInt
+		value.Value = v
 	case float32:
-		number.Type = Real
-		number.Real = float64(v)
+		value.Type = Real
+		value.Value = float64(v)
 	case float64:
-		number.Type = Real
-		number.Real = v
+		value.Type = Real
+		value.Value = v
+	case string:
+		value.Type = String
+		value.Value = v
+	case []byte:
+		if len(v) == 12 {
+			d, err := NewDlmsDateTimeFromSlice(v)
+			if err == nil {
+				value.Type = DateTime
+				value.Value = d
+				break
+			}
+		}
+		value.Type = String
+		value.Value = string(v)
 	default:
 		return fmt.Errorf("unexpected type %T", data.Value)
 	}
-	trg.Set(reflect.ValueOf(number))
+	trg.Set(reflect.ValueOf(value))
 	return nil
 }
 
