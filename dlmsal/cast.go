@@ -33,7 +33,7 @@ func recast(trg reflect.Value, data *DlmsData) error {
 			}
 			bb, err := NewDlmsDateTimeFromSlice(b)
 			if err != nil {
-				return nil
+				return err
 			}
 			tt, err := bb.ToTime()
 			if err != nil {
@@ -59,7 +59,7 @@ func recast(trg reflect.Value, data *DlmsData) error {
 			}
 			bb, err := NewDlmsDateTimeFromSlice(b)
 			if err != nil {
-				return nil
+				return err
 			}
 			trg.Set(reflect.ValueOf(bb))
 		case DlmsDateTime:
