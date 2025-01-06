@@ -26,6 +26,7 @@ type tcp struct {
 	totaloutgoing   int64
 	currentincoming int64
 	maxincoming     int64
+	inerror         error
 }
 
 func New(hostname string, port int, timeout time.Duration) base.Stream {
@@ -141,7 +142,7 @@ func (t *tcp) Write(src []byte) error {
 	return nil
 }
 
-func (t *tcp) Read(p []byte) (n int, err error) {
+func (t *tcp) Read(p []byte) (int, error) {
 	if !t.connected {
 		return 0, base.ErrNotOpened
 	}
@@ -149,7 +150,7 @@ func (t *tcp) Read(p []byte) (n int, err error) {
 		return 0, base.ErrNothingToRead
 	}
 
-	n = len(p)
+	n := len(p)
 	rem := t.read - t.offset
 	if rem > 0 { // having something unread in the buffer
 		if n > rem {
@@ -157,37 +158,37 @@ func (t *tcp) Read(p []byte) (n int, err error) {
 		}
 		copy(p, t.buffer[t.offset:t.offset+n])
 		t.offset += n
-		return
+		return n, nil
+	}
+	if t.inerror != nil {
+		err := t.inerror
+		t.inerror = nil
+		return 0, err
 	}
 
 	t.setcommdeadline()
-	rx, err := t.conn.Read(t.buffer)
-	t.totalincoming += int64(rx)
-	t.currentincoming += int64(rx)
+	t.read, t.inerror = t.conn.Read(t.buffer)
+	t.totalincoming += int64(t.read)
+	t.currentincoming += int64(t.read)
 	if t.maxincoming > 0 && t.currentincoming > t.maxincoming {
 		return 0, fmt.Errorf("received more than allowed")
 	}
 
-	if rx > 0 {
-		t.read = rx
-		if n > rx {
-			n = rx
-		}
-		copy(p, t.buffer[:n])
-		t.offset = n
-
+	if t.read > 0 {
 		if t.logger != nil {
-			t.logger.Debugf(base.LogHex("RX", t.buffer[:rx]))
+			t.logger.Debugf(base.LogHex("RX", t.buffer[:t.read]))
 		}
+
+		t.offset = 0
+		return t.Read(p)
 	}
 
-	if err != nil {
+	if t.inerror != nil {
+		err := t.inerror
+		t.inerror = nil
 		return 0, err
 	}
-	if rx == 0 { // this is a bit questionable
-		return 0, io.EOF
-	}
-	return
+	return 0, io.EOF // this is a bit questionable
 }
 
 func (t *tcp) GetRxTxBytes() (int64, int64) {
