@@ -147,58 +147,13 @@ func (w *maclayer) Open() error {
 		return err
 	}
 	// snrm here, always negotiate for now
-	var p []byte
-	var offset int
+	p := w.recvbuffer[:0]
 	if w.maxrcv > 128 || w.maxsnd > 128 { // longer snrm
-		p = w.recvbuffer[:23]
-		p[0] = 0x81
-		p[1] = 0x80
-		p[2] = 0x14
-		p[3] = 0x05
-		p[4] = 0x02
-		p[5] = byte(w.maxsnd >> 8)
-		p[6] = byte(w.maxsnd)
-		p[7] = 0x06
-		p[8] = 0x02
-		p[9] = byte(w.maxrcv >> 8)
-		p[10] = byte(w.maxrcv)
-		offset = 11
+		p = append(p, 0x81, 0x80, 0x14, 0x05, 0x02, byte(w.maxsnd>>8), byte(w.maxsnd), 0x06, 0x02, byte(w.maxrcv>>8), byte(w.maxrcv))
 	} else {
-		p = w.recvbuffer[:21]
-		p[0] = 0x81
-		p[1] = 0x80
-		p[2] = 0x14
-		p[3] = 0x05
-		p[4] = 0x01
-		p[5] = byte(w.maxsnd)
-		p[6] = 0x06
-		p[7] = 0x01
-		p[8] = byte(w.maxrcv)
-		offset = 9
+		p = append(p, 0x81, 0x80, 0x14, 0x05, 0x01, byte(w.maxsnd), 0x06, 0x01, byte(w.maxrcv))
 	}
-	p[offset] = 0x07
-	offset++
-	p[offset] = 0x04
-	offset++
-	p[offset] = 0x00
-	offset++
-	p[offset] = 0x00
-	offset++
-	p[offset] = 0x00
-	offset++
-	p[offset] = 0x01
-	offset++
-	p[offset] = 0x08
-	offset++
-	p[offset] = 0x04
-	offset++
-	p[offset] = 0x00
-	offset++
-	p[offset] = 0x00
-	offset++
-	p[offset] = 0x00
-	offset++
-	p[offset] = 0x01
+	p = append(p, 0x07, 0x04, 0x00, 0x00, 0x00, 0x01, 0x08, 0x04, 0x00, 0x00, 0x00, 0x01)
 
 	err := w.writepacket(macpacket{control: 0x83, info: p, segmented: false}, true)
 	if err != nil {
