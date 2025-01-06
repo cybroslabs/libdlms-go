@@ -107,7 +107,7 @@ func (t *tcp) SetLogger(logger *zap.SugaredLogger) {
 
 func (t *tcp) setcommdeadline() {
 	cd := time.Now().Add(t.timeout)
-	if !t.deadline.IsZero() {
+	if t.deadline.IsZero() {
 		_ = t.conn.SetDeadline(cd)
 	} else {
 		if cd.Compare(t.deadline) < 0 {
