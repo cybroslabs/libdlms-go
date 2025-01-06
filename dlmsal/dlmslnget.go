@@ -64,7 +64,7 @@ func (ln *dlmsalget) get(items []DlmsLNRequestItem) ([]DlmsData, error) {
 		local.WriteByte(byte(TagGetRequestNormal))
 	}
 	master.invokeid = (master.invokeid + 1) & 7
-	local.WriteByte(master.invokeid | master.settings.HighPriority | master.settings.ConfirmedRequests)
+	local.WriteByte(master.invokeid | master.settings.invokebyte)
 
 	if len(items) > 1 {
 		encodelength(local, uint(len(items)))
@@ -106,7 +106,7 @@ func (ln *dlmsalget) getstream(item DlmsLNRequestItem, inmem bool) (DlmsDataStre
 	local.WriteByte(byte(TagGetRequest))
 	local.WriteByte(byte(TagGetRequestNormal))
 	master.invokeid = (master.invokeid + 1) & 7
-	local.WriteByte(master.invokeid | master.settings.HighPriority | master.settings.ConfirmedRequests)
+	local.WriteByte(master.invokeid | master.settings.invokebyte)
 
 	err := encodelngetitem(local, &item)
 	if err != nil {
@@ -348,7 +348,7 @@ func (ln *dlmsalget) Read(p []byte) (n int, err error) { // this will go to data
 			local.Reset()
 			local.WriteByte(byte(TagGetRequest))
 			local.WriteByte(byte(TagGetRequestNext))
-			local.WriteByte(master.invokeid | master.settings.HighPriority | master.settings.ConfirmedRequests)
+			local.WriteByte(master.invokeid | master.settings.invokebyte)
 			local.WriteByte(byte(ln.blockexp >> 24))
 			local.WriteByte(byte(ln.blockexp >> 16))
 			local.WriteByte(byte(ln.blockexp >> 8))

@@ -96,8 +96,8 @@ type DlmsSettings struct {
 	ConformanceBlock  uint32
 	MaxPduRecvSize    int
 	VAAddress         int16
-	HighPriority      byte
-	ConfirmedRequests byte
+	HighPriority      bool
+	ConfirmedRequests bool
 	EmptyRLRQ         bool
 	Security          DlmsSecurity
 	StoC              []byte
@@ -105,6 +105,7 @@ type DlmsSettings struct {
 	SourceDiagnostic  SourceDiagnostic
 
 	// private part
+	invokebyte         byte
 	authentication     Authentication
 	applicationContext ApplicationContext
 	password           []byte
@@ -148,8 +149,8 @@ func NewSettingsWithLowAuthenticationLN(password string) (*DlmsSettings, error) 
 		authentication:     AuthenticationLow,
 		applicationContext: ApplicationContextLNNoCiphering,
 		password:           []byte(password),
-		HighPriority:       0x80,
-		ConfirmedRequests:  0x40,
+		HighPriority:       true,
+		ConfirmedRequests:  true,
 		ConformanceBlock: ConformanceBlockBlockTransferWithGetOrRead | ConformanceBlockBlockTransferWithSetOrWrite |
 			ConformanceBlockBlockTransferWithAction | ConformanceBlockAction | ConformanceBlockGet | ConformanceBlockSet |
 			ConformanceBlockSelectiveAccess | ConformanceBlockMultipleReferences | ConformanceBlockAttribute0SupportedWithGet,
@@ -160,8 +161,8 @@ func NewSettingsNoAuthenticationLN() (*DlmsSettings, error) {
 	return &DlmsSettings{
 		authentication:     AuthenticationNone,
 		applicationContext: ApplicationContextLNNoCiphering,
-		HighPriority:       0x80,
-		ConfirmedRequests:  0x40,
+		HighPriority:       true,
+		ConfirmedRequests:  true,
 		ConformanceBlock: ConformanceBlockBlockTransferWithGetOrRead | ConformanceBlockBlockTransferWithSetOrWrite |
 			ConformanceBlockBlockTransferWithAction | ConformanceBlockAction | ConformanceBlockGet | ConformanceBlockSet |
 			ConformanceBlockSelectiveAccess | ConformanceBlockMultipleReferences | ConformanceBlockAttribute0SupportedWithGet,
@@ -182,8 +183,8 @@ func NewSettingsWithGmacLN(systemtitle []byte, ek []byte, ak []byte, ctoshash []
 	ret := DlmsSettings{
 		authentication:     AuthenticationHighGmac,
 		applicationContext: ApplicationContextLNCiphering,
-		HighPriority:       0x80,
-		ConfirmedRequests:  0x40,
+		HighPriority:       true,
+		ConfirmedRequests:  true,
 		ConformanceBlock: ConformanceBlockBlockTransferWithGetOrRead | ConformanceBlockBlockTransferWithSetOrWrite |
 			ConformanceBlockBlockTransferWithAction | ConformanceBlockAction | ConformanceBlockGet | ConformanceBlockSet |
 			ConformanceBlockSelectiveAccess | ConformanceBlockMultipleReferences | ConformanceBlockAttribute0SupportedWithGet |
@@ -200,6 +201,13 @@ func NewSettingsWithGmacLN(systemtitle []byte, ek []byte, ak []byte, ctoshash []
 }
 
 func New(transport base.Stream, settings *DlmsSettings) DlmsClient {
+	settings.invokebyte = 0
+	if settings.HighPriority {
+		settings.invokebyte |= 0x80
+	}
+	if settings.ConfirmedRequests {
+		settings.invokebyte |= 0x40
+	}
 	return &dlmsal{
 		transport: transport,
 		logger:    nil,

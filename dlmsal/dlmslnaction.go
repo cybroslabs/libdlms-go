@@ -45,7 +45,7 @@ func (ln *dlmsalaction) action(item DlmsLNRequestItem) (data *DlmsData, err erro
 	local.WriteByte(byte(TagActionRequest))
 	local.WriteByte(byte(TagActionRequestNormal))
 	master.invokeid = (master.invokeid + 1) & 7
-	local.WriteByte(master.invokeid | master.settings.HighPriority | master.settings.ConfirmedRequests)
+	local.WriteByte(master.invokeid | master.settings.invokebyte)
 	err = encodelnactionitem(local, &item)
 	if err != nil {
 		return
@@ -173,7 +173,7 @@ func (ln *dlmsalaction) Read(p []byte) (n int, err error) { // this will go to d
 			local.Reset()
 			local.WriteByte(byte(TagActionRequest))
 			local.WriteByte(byte(TagActionRequestNextPBlock))
-			local.WriteByte(master.invokeid | master.settings.HighPriority | master.settings.ConfirmedRequests)
+			local.WriteByte(master.invokeid | master.settings.invokebyte)
 			local.WriteByte(byte(ln.blockexp >> 24))
 			local.WriteByte(byte(ln.blockexp >> 16))
 			local.WriteByte(byte(ln.blockexp >> 8))
