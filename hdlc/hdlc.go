@@ -178,6 +178,7 @@ func (w *maclayer) Open() error {
 	if err != nil {
 		return err
 	}
+	w.logf("snrm completed, having maxsnd: %v, maxrcv: %v", w.maxsnd, w.maxrcv)
 
 	w.isopen = true
 	return nil
