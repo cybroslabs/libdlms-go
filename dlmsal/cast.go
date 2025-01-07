@@ -200,6 +200,7 @@ func recaststring(trg reflect.Value, data *DlmsData) error {
 		return nil
 	case []DlmsData:
 	case []byte:
+		trg.SetString(string(v))
 	default:
 		trg.SetString(fmt.Sprintf("%v", data.Value)) // like really? ;)
 		return nil
