@@ -47,7 +47,7 @@ func recast(trg reflect.Value, data *DlmsData) error {
 			}
 			trg.Set(reflect.ValueOf(tt))
 		default:
-			return fmt.Errorf("invalid source type %T for time", data.Value)
+			return fmt.Errorf("invalid source type %T for time", b)
 		}
 		return nil
 	}
@@ -65,7 +65,7 @@ func recast(trg reflect.Value, data *DlmsData) error {
 		case DlmsDateTime:
 			trg.Set(reflect.ValueOf(b))
 		default:
-			return fmt.Errorf("invalid source type %T for time", data.Value)
+			return fmt.Errorf("invalid source type %T for time", b)
 		}
 		return nil
 	}
@@ -81,7 +81,7 @@ func recast(trg reflect.Value, data *DlmsData) error {
 			}
 			trg.Set(reflect.ValueOf(bb))
 		default:
-			return fmt.Errorf("invalid source type %T for obis", data.Value)
+			return fmt.Errorf("invalid source type %T for obis", b)
 		}
 		return nil
 	}
@@ -151,7 +151,7 @@ func recaststruct(trg reflect.Value, data *DlmsData) error {
 			}
 		}
 	default:
-		return fmt.Errorf("unexpected type %T", data.Value)
+		return fmt.Errorf("unexpected type %T", v)
 	}
 	return nil
 }
@@ -188,7 +188,7 @@ func recastslice(trg reflect.Value, data *DlmsData) error {
 			}
 		}
 	default:
-		return fmt.Errorf("unexpected type %T", data.Value)
+		return fmt.Errorf("unexpected type %T", v)
 	}
 	return nil
 }
@@ -201,8 +201,9 @@ func recaststring(trg reflect.Value, data *DlmsData) error {
 	case []DlmsData:
 	case []byte:
 		trg.SetString(string(v))
+		return nil
 	default:
-		trg.SetString(fmt.Sprintf("%v", data.Value)) // like really? ;)
+		trg.SetString(fmt.Sprintf("%v", v)) // like really? ;)
 		return nil
 	}
 	return fmt.Errorf("unexpected type %T", data.Value)
@@ -265,7 +266,7 @@ func recastvalue(trg reflect.Value, data *DlmsData) error {
 		value.Type = String
 		value.Value = string(v)
 	default:
-		return fmt.Errorf("unexpected type %T", data.Value)
+		return fmt.Errorf("unexpected type %T", v)
 	}
 	trg.Set(reflect.ValueOf(value))
 	return nil
@@ -290,7 +291,7 @@ func recastint(trg reflect.Value, data *DlmsData) error {
 	case int64:
 		trg.SetInt(v)
 	default:
-		return fmt.Errorf("unexpected type %T", data.Value)
+		return fmt.Errorf("unexpected type %T", v)
 	}
 	return nil
 }
@@ -320,7 +321,7 @@ func recastbool(trg reflect.Value, data *DlmsData) error {
 	case uint64:
 		trg.SetBool(v != 0)
 	default:
-		return fmt.Errorf("unexpected type %T", data.Value)
+		return fmt.Errorf("unexpected type %T", v)
 	}
 	return nil
 }
@@ -344,7 +345,7 @@ func recastuint(trg reflect.Value, data *DlmsData) error {
 	case uint64:
 		trg.SetUint(v)
 	default:
-		return fmt.Errorf("unexpected type %T", data.Value)
+		return fmt.Errorf("unexpected type %T", v)
 	}
 	return nil
 }
@@ -372,7 +373,7 @@ func recastfloat(trg reflect.Value, data *DlmsData) error {
 	case int64:
 		trg.SetFloat(float64(v))
 	default:
-		return fmt.Errorf("unexpected type %T", data.Value)
+		return fmt.Errorf("unexpected type %T", v)
 	}
 	return nil
 }
