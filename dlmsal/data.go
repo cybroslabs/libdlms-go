@@ -695,8 +695,6 @@ func getstructuretypes(d *DlmsData) ([]dataTag, error) {
 func encodeBCD(out *bytes.Buffer, d *DlmsData) error {
 	var lr int64
 	switch t := d.Value.(type) {
-	case int:
-		lr = int64(t)
 	case int8:
 		lr = int64(t)
 	case int16:
@@ -874,8 +872,6 @@ func encodeInteger(out *bytes.Buffer, d *DlmsData, len int) error {
 		if t {
 			lr = 1
 		}
-	case uint:
-		lr = uint64(t)
 	case uint8:
 		lr = uint64(t)
 	case uint16:
@@ -884,8 +880,6 @@ func encodeInteger(out *bytes.Buffer, d *DlmsData, len int) error {
 		lr = uint64(t)
 	case uint64:
 		lr = uint64(t)
-	case int:
-		lr = uint64(int64(t)) // i know it exapnds signed bits, but i like it that way
 	case int8:
 		lr = uint64(int64(t))
 	case int16:

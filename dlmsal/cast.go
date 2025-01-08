@@ -98,9 +98,9 @@ func recast(trg reflect.Value, data *DlmsData) error {
 		trg.Set(elem)
 	case e == reflect.Bool:
 		return recastbool(trg, data)
-	case e == reflect.Int8 || e == reflect.Int16 || e == reflect.Int32 || e == reflect.Int64:
+	case e == reflect.Int || e == reflect.Int8 || e == reflect.Int16 || e == reflect.Int32 || e == reflect.Int64:
 		return recastint(trg, data)
-	case e == reflect.Uint8 || e == reflect.Uint16 || e == reflect.Uint32 || e == reflect.Uint64:
+	case e == reflect.Uint || e == reflect.Uint8 || e == reflect.Uint16 || e == reflect.Uint32 || e == reflect.Uint64:
 		return recastuint(trg, data)
 	case e == reflect.Float32 || e == reflect.Float64:
 		return recastfloat(trg, data)
@@ -126,9 +126,6 @@ func recaststruct(trg reflect.Value, data *DlmsData) error {
 		}
 
 		for i := 0; i < n; i++ {
-			// if !trg.Type().Field(i).IsExported() {
-			// 	return fmt.Errorf("field %s is not exported", trg.Type().Field(i).Name)
-			// }
 			if trg.Type().Field(i).IsExported() { // fill only exported (public) fields
 				field := trg.Field(i)
 				if field.Kind() == reflect.Pointer {
@@ -215,9 +212,6 @@ func recastvalue(trg reflect.Value, data *DlmsData) error {
 	case bool:
 		value.Type = Boolean
 		value.Value = v
-	case int:
-		value.Type = SignedInt
-		value.Value = int64(v)
 	case int8:
 		value.Type = SignedInt
 		value.Value = int64(v)
@@ -230,9 +224,6 @@ func recastvalue(trg reflect.Value, data *DlmsData) error {
 	case int64:
 		value.Type = SignedInt
 		value.Value = v
-	case uint:
-		value.Type = UnsignedInt
-		value.Value = uint64(v)
 	case uint8:
 		value.Type = UnsignedInt
 		value.Value = uint64(v)
@@ -280,8 +271,6 @@ func recastint(trg reflect.Value, data *DlmsData) error {
 		} else {
 			trg.SetInt(0)
 		}
-	case int:
-		trg.SetInt(int64(v))
 	case int8:
 		trg.SetInt(int64(v))
 	case int16:
@@ -300,8 +289,6 @@ func recastbool(trg reflect.Value, data *DlmsData) error {
 	switch v := data.Value.(type) {
 	case bool:
 		trg.SetBool(v)
-	case int:
-		trg.SetBool(v != 0)
 	case int8:
 		trg.SetBool(v != 0)
 	case int16:
@@ -309,8 +296,6 @@ func recastbool(trg reflect.Value, data *DlmsData) error {
 	case int32:
 		trg.SetBool(v != 0)
 	case int64:
-		trg.SetBool(v != 0)
-	case uint:
 		trg.SetBool(v != 0)
 	case uint8:
 		trg.SetBool(v != 0)
@@ -334,8 +319,6 @@ func recastuint(trg reflect.Value, data *DlmsData) error {
 		} else {
 			trg.SetUint(0)
 		}
-	case uint:
-		trg.SetUint(uint64(v))
 	case uint8:
 		trg.SetUint(uint64(v))
 	case uint16:
@@ -362,8 +345,6 @@ func recastfloat(trg reflect.Value, data *DlmsData) error {
 		trg.SetFloat(float64(v))
 	case float64:
 		trg.SetFloat(v)
-	case int:
-		trg.SetFloat(float64(v))
 	case int8:
 		trg.SetFloat(float64(v))
 	case int16:
