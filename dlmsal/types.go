@@ -166,18 +166,26 @@ func mustatoi(s string) int {
 }
 
 func NewDlmsObisFromString(src string) (ob DlmsObis, err error) {
-	rg := regexp.MustCompile(`^(\d+)-(\d+):(\d+)\.(\d+)\.(\d+)\.(\d+)$`)
+	rg := regexp.MustCompile(`^((\d+)-(\d+):)?(\d+)\.(\d+)(\.(\d+)(\.(\d+))?)?$`)
 	if !rg.MatchString(src) {
 		err = fmt.Errorf("invalid format")
 		return
 	}
 	m := rg.FindStringSubmatch(src)
-	a := mustatoi(m[1])
-	b := mustatoi(m[2])
-	c := mustatoi(m[3])
-	d := mustatoi(m[4])
-	e := mustatoi(m[5])
-	f := mustatoi(m[6])
+	a, b := 0, 0
+	if len(m[1]) > 0 {
+		a = mustatoi(m[2])
+		b = mustatoi(m[3])
+	}
+	c := mustatoi(m[4])
+	d := mustatoi(m[5])
+	e, f := 255, 255
+	if len(m[6]) > 0 {
+		e = mustatoi(m[7])
+		if len(m[8]) > 0 {
+			f = mustatoi(m[9])
+		}
+	}
 	if a > 255 || b > 255 || c > 255 || d > 255 || e > 255 || f > 255 {
 		err = fmt.Errorf("invalid value")
 		return
