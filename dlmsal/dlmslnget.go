@@ -219,12 +219,12 @@ func (ln *dlmsalget) getnextdata(tag CosemTag, i int) (cont bool, err error) {
 			if master.tmpbuffer[0] != 0 {
 				_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
 				if err == io.ErrUnexpectedEOF {
-					ln.data[i] = NewDlmsDataError(DlmsError{Result: TagAccOtherReason}) // this kind of data cant be decoded, so that is why
+					ln.data[i] = NewDlmsDataError(TagAccOtherReason) // this kind of data cant be decoded, so that is why
 				} else {
 					if err != nil {
 						return false, err
 					}
-					ln.data[i] = NewDlmsDataError(DlmsError{Result: AccessResultTag(master.tmpbuffer[0])})
+					ln.data[i] = NewDlmsDataError(AccessResultTag(master.tmpbuffer[0]))
 				}
 			} else {
 				ln.data[i], _, err = decodeDataTag(ln.transport, &master.tmpbuffer)
@@ -252,7 +252,7 @@ func (ln *dlmsalget) getnextdata(tag CosemTag, i int) (cont bool, err error) {
 					if err != nil {
 						return false, err
 					}
-					ln.data[i] = NewDlmsDataError(DlmsError{Result: AccessResultTag(master.tmpbuffer[0])})
+					ln.data[i] = NewDlmsDataError(AccessResultTag(master.tmpbuffer[0]))
 				} else {
 					ln.data[i], _, err = decodeDataTag(ln.transport, &master.tmpbuffer)
 					if err != nil {
@@ -300,7 +300,7 @@ func (ln *dlmsalget) decodedata(i int) (err error) {
 		if err != nil {
 			return
 		}
-		ln.data[i] = NewDlmsDataError(DlmsError{Result: AccessResultTag(master.tmpbuffer[0])})
+		ln.data[i] = NewDlmsDataError(AccessResultTag(master.tmpbuffer[0]))
 	} else {
 		ln.data[i], _, err = decodeDataTag(ln, &master.tmpbuffer)
 	}

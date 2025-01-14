@@ -71,7 +71,7 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 			if err != nil {
 				return nil, err
 			}
-			ret[i] = NewDlmsDataError(DlmsError{Result: AccessResultTag(d.tmpbuffer[0])})
+			ret[i] = NewDlmsDataError(AccessResultTag(d.tmpbuffer[0]))
 		default:
 			return nil, fmt.Errorf("unexpected response tag: %x", d.tmpbuffer[0])
 		}

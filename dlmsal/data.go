@@ -49,8 +49,8 @@ type DlmsData struct {
 	Tag   dataTag
 }
 
-func NewDlmsDataError(err DlmsError) DlmsData {
-	return DlmsData{Tag: TagError, Value: err}
+func NewDlmsDataError(err AccessResultTag) DlmsData {
+	return DlmsData{Tag: TagError, Value: DlmsError{Result: err}}
 }
 
 type DlmsError struct {
