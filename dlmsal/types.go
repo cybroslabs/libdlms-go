@@ -18,6 +18,13 @@ const (
 	DateTime    ValueType = 4   // DlmsDateTime
 	Boolean     ValueType = 5   // bool
 	Unknown     ValueType = 255 // nil
+
+	ObisHasA = 0x20
+	ObisHasB = 0x10
+	ObisHasC = 0x08
+	ObisHasD = 0x04
+	ObisHasE = 0x02
+	ObisHasF = 0x01
 )
 
 type Value struct {
@@ -166,24 +173,33 @@ func mustatoi(s string) int {
 }
 
 func NewDlmsObisFromString(src string) (ob DlmsObis, err error) {
+	ob, _, err = NewDlmsObisFromStringComp(src)
+	return
+}
+
+func NewDlmsObisFromStringComp(src string) (ob DlmsObis, cmp int, err error) {
 	rg := regexp.MustCompile(`^((\d+)-(\d+):)?(\d+)\.(\d+)(\.(\d+)(\.(\d+))?)?$`)
 	if !rg.MatchString(src) {
 		err = fmt.Errorf("invalid format")
 		return
 	}
+	cmp = 12
 	m := rg.FindStringSubmatch(src)
 	a, b := 0, 0
 	if len(m[1]) > 0 {
 		a = mustatoi(m[2])
 		b = mustatoi(m[3])
+		cmp |= 0x30
 	}
 	c := mustatoi(m[4])
 	d := mustatoi(m[5])
 	e, f := 255, 255
 	if len(m[6]) > 0 {
 		e = mustatoi(m[7])
+		cmp |= 2
 		if len(m[8]) > 0 {
 			f = mustatoi(m[9])
+			cmp |= 1
 		}
 	}
 	if a > 255 || b > 255 || c > 255 || d > 255 || e > 255 || f > 255 {
