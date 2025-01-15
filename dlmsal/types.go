@@ -183,23 +183,23 @@ func NewDlmsObisFromStringComp(src string) (ob DlmsObis, cmp int, err error) {
 		err = fmt.Errorf("invalid format")
 		return
 	}
-	cmp = 12
+	cmp = ObisHasC | ObisHasD
 	m := rg.FindStringSubmatch(src)
 	a, b := 0, 0
 	if len(m[1]) > 0 {
 		a = mustatoi(m[2])
 		b = mustatoi(m[3])
-		cmp |= 0x30
+		cmp |= ObisHasA | ObisHasB
 	}
 	c := mustatoi(m[4])
 	d := mustatoi(m[5])
 	e, f := 255, 255
 	if len(m[6]) > 0 {
 		e = mustatoi(m[7])
-		cmp |= 2
+		cmp |= ObisHasE
 		if len(m[8]) > 0 {
 			f = mustatoi(m[9])
-			cmp |= 1
+			cmp |= ObisHasF
 		}
 	}
 	if a > 255 || b > 255 || c > 255 || d > 255 || e > 255 || f > 255 {
