@@ -88,27 +88,27 @@ func recast(trg reflect.Value, data *DlmsData) error {
 	if isvalue {
 		return recastvalue(trg, data)
 	}
-	switch {
-	case e == reflect.Pointer:
+	switch e {
+	case reflect.Pointer:
 		elem := reflect.New(trg.Type().Elem())
 		err := recast(reflect.Indirect(elem), data)
 		if err != nil {
 			return err
 		}
 		trg.Set(elem)
-	case e == reflect.Bool:
+	case reflect.Bool:
 		return recastbool(trg, data)
-	case e == reflect.Int || e == reflect.Int8 || e == reflect.Int16 || e == reflect.Int32 || e == reflect.Int64:
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		return recastint(trg, data)
-	case e == reflect.Uint || e == reflect.Uint8 || e == reflect.Uint16 || e == reflect.Uint32 || e == reflect.Uint64:
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		return recastuint(trg, data)
-	case e == reflect.Float32 || e == reflect.Float64:
+	case reflect.Float32, reflect.Float64:
 		return recastfloat(trg, data)
-	case e == reflect.String:
+	case reflect.String:
 		return recaststring(trg, data)
-	case e == reflect.Slice:
+	case reflect.Slice:
 		return recastslice(trg, data)
-	case e == reflect.Struct:
+	case reflect.Struct:
 		return recaststruct(trg, data)
 	default:
 		return fmt.Errorf("unsupported type %v", e)

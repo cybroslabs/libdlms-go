@@ -109,9 +109,7 @@ func (d *datastream) NextElement() (*DlmsDataStreamItem, error) {
 	t := dataTag(d.buffer[0])
 	// direct exception in case of array and struct here, these items should be stacked, screw compact array...
 	switch t {
-	case TagArray: // slighlty duplicit code
-		return d.arrayElement(t)
-	case TagStructure:
+	case TagArray, TagStructure:
 		return d.arrayElement(t)
 	default:
 		next, _, err := decodeData(d.src, t, &d.buffer)

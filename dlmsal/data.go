@@ -94,9 +94,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 	switch tag {
 	case TagNull:
 		return DlmsData{Tag: tag}, 0, nil
-	case TagArray:
-		return decodeDataArray(src, tag, tmpbuffer)
-	case TagStructure:
+	case TagArray, TagStructure:
 		return decodeDataArray(src, tag, tmpbuffer)
 	case TagBoolean:
 		{
@@ -154,14 +152,6 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 			}
 			v := uint32(tmpbuffer[0])<<24 | uint32(tmpbuffer[1])<<16 | uint32(tmpbuffer[2])<<8 | uint32(tmpbuffer[3])
 			return DlmsData{Tag: tag, Value: v}, 4, nil
-		}
-	case TagFloatingPoint:
-		{
-			_, err = io.ReadFull(src, tmpbuffer[:4])
-			if err != nil {
-				return data, 0, fmt.Errorf("too short data for floating point %v", err)
-			}
-			return DlmsData{Tag: tag, Value: math.Float32frombits(binary.BigEndian.Uint32(tmpbuffer[:4]))}, 4, nil
 		}
 	case TagOctetString:
 		{
@@ -237,11 +227,11 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 			v := int16(tmpbuffer[0])<<8 | int16(tmpbuffer[1])
 			return DlmsData{Tag: tag, Value: v}, 2, nil
 		}
-	case TagUnsigned:
+	case TagUnsigned, TagEnum:
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:1])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for unsigned %v", err)
+				return data, 0, fmt.Errorf("too short data for unsigned/enum %v", err)
 			}
 			v := uint8(tmpbuffer[0])
 			return DlmsData{Tag: tag, Value: v}, 1, nil
@@ -366,16 +356,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 			v := uint64(tmpbuffer[0])<<56 | uint64(tmpbuffer[1])<<48 | uint64(tmpbuffer[2])<<40 | uint64(tmpbuffer[3])<<32 | uint64(tmpbuffer[4])<<24 | uint64(tmpbuffer[5])<<16 | uint64(tmpbuffer[6])<<8 | uint64(tmpbuffer[7])
 			return DlmsData{Tag: tag, Value: v}, 8, nil
 		}
-	case TagEnum:
-		{
-			_, err = io.ReadFull(src, tmpbuffer[:1])
-			if err != nil {
-				return data, 0, fmt.Errorf("too short data for enum %v", err)
-			}
-			v := uint8(tmpbuffer[0])
-			return DlmsData{Tag: tag, Value: v}, 1, nil
-		}
-	case TagFloat32:
+	case TagFloat32, TagFloatingPoint:
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:4])
 			if err != nil {
@@ -467,48 +448,30 @@ func encodeData(out *bytes.Buffer, d *DlmsData) error {
 func encodeDatanoTag(out *bytes.Buffer, d *DlmsData) error {
 	switch d.Tag {
 	case TagNull:
-	case TagArray: // fuck how many casting we will be supporting
+	case TagArray, TagStructure:
 		return encodeArrayStructure(out, d)
-	case TagStructure:
-		return encodeArrayStructure(out, d)
-	case TagBoolean:
-		return encodeInteger(out, d, 1)
 	case TagBitString:
 		return encodeBitstring(out, d)
-	case TagDoubleLong:
-		return encodeInteger(out, d, 4)
-	case TagDoubleLongUnsigned:
-		return encodeInteger(out, d, 4)
-	case TagFloatingPoint:
-		return encodeFloat(out, d, 4)
 	case TagOctetString:
 		return encodeOctetString(out, d)
-	case TagVisibleString:
-		return encodeVisibleString(out, d)
-	case TagUTF8String:
+	case TagVisibleString, TagUTF8String:
 		return encodeVisibleString(out, d)
 	case TagBCD:
 		return encodeBCD(out, d)
-	case TagInteger:
+	case TagBoolean, TagEnum, TagInteger, TagUnsigned:
 		return encodeInteger(out, d, 1)
-	case TagLong:
+	case TagLong, TagLongUnsigned:
 		return encodeInteger(out, d, 2)
-	case TagUnsigned:
-		return encodeInteger(out, d, 1)
-	case TagLongUnsigned:
-		return encodeInteger(out, d, 2)
-	case TagCompactArray:
-		return encodeCompactArray(out, d)
-	case TagLong64:
+	case TagDoubleLong, TagDoubleLongUnsigned:
+		return encodeInteger(out, d, 4)
+	case TagLong64, TagLong64Unsigned:
 		return encodeInteger(out, d, 8)
-	case TagLong64Unsigned:
-		return encodeInteger(out, d, 8)
-	case TagEnum:
-		return encodeInteger(out, d, 1)
-	case TagFloat32:
+	case TagFloat32, TagFloatingPoint:
 		return encodeFloat(out, d, 4)
 	case TagFloat64:
 		return encodeFloat(out, d, 8)
+	case TagCompactArray:
+		return encodeCompactArray(out, d)
 	case TagDateTime:
 		return encodeDateTime(out, d)
 	case TagDate:

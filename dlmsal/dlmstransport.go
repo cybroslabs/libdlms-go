@@ -63,10 +63,10 @@ func (d *dlmsal) sendpdu() (tag CosemTag, str io.Reader, err error) {
 		return
 	}
 	tag = CosemTag(d.tmpbuffer[0])
-	switch {
-	case tag == TagGloGetResponse || tag == TagGloSetResponse || tag == TagGloActionResponse || tag == TagGloReadResponse || tag == TagGloWriteResponse:
+	switch tag {
+	case TagGloGetResponse, TagGloSetResponse, TagGloActionResponse, TagGloReadResponse, TagGloWriteResponse:
 		return d.recvcipheredpdu(tag, false)
-	case tag == TagDedGetResponse || tag == TagDedSetResponse || tag == TagDedActionResponse || tag == TagDedReadResponse || tag == TagDedWriteResponse:
+	case TagDedGetResponse, TagDedSetResponse, TagDedActionResponse, TagDedReadResponse, TagDedWriteResponse:
 		return d.recvcipheredpdu(tag, true)
 	}
 	return tag, d.transport, err

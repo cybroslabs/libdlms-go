@@ -155,16 +155,7 @@ func putappctxname(dst *bytes.Buffer, settings *DlmsSettings) {
 	// not so exactly correct things, but for speed sake
 	dst.WriteByte(BERTypeContext | BERTypeConstructed | PduTypeApplicationContextName)
 	dst.Write([]byte{0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01})
-	switch settings.applicationContext {
-	case ApplicationContextLNNoCiphering:
-		dst.WriteByte(byte(ApplicationContextLNNoCiphering))
-	case ApplicationContextSNNoCiphering:
-		dst.WriteByte(byte(ApplicationContextSNNoCiphering))
-	case ApplicationContextLNCiphering:
-		dst.WriteByte(byte(ApplicationContextLNCiphering))
-	case ApplicationContextSNCiphering:
-		dst.WriteByte(byte(ApplicationContextSNCiphering))
-	}
+	dst.WriteByte(byte(settings.applicationContext))
 }
 
 func putmechname(dst *bytes.Buffer, settings *DlmsSettings) {
