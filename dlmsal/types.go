@@ -78,6 +78,14 @@ func (t *DlmsDateTime) ToTime() (tt time.Time, err error) {
 	return
 }
 
+func (t *DlmsDateTime) ToUTCTime() (tt time.Time, err error) {
+	tmp := t.Deviation
+	t.Deviation = 0
+	tt, err = t.ToTime()
+	t.Deviation = tmp
+	return
+}
+
 func (t *DlmsDateTime) EncodeToDlms(dst *bytes.Buffer) {
 	encodelength(dst, 12)
 	dst.WriteByte(byte(t.Date.Year >> 8))
