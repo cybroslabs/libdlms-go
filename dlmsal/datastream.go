@@ -144,7 +144,7 @@ func (d *datastream) Close() error { // artifically read out the rest
 		if err != nil {
 			if err == io.EOF {
 				if d.logger != nil {
-					d.logger.Warnf("data stream readout %v bytes", cnt)
+					d.logger.Debugf("data stream readout %v bytes", cnt)
 				}
 				return nil
 			}
