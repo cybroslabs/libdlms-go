@@ -2,6 +2,7 @@ package dlmsal
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 
@@ -66,9 +67,9 @@ type DlmsClient interface {
 	Open() error
 	SetLogger(logger *zap.SugaredLogger)
 	Get(items []DlmsLNRequestItem) ([]DlmsData, error)
-	GetStream(item DlmsLNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error)
+	GetStream(item DlmsLNRequestItem, inmem bool) (DlmsDataStream, error)
 	Read(items []DlmsSNRequestItem) ([]DlmsData, error)
-	ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error) // only for big single item queries
+	ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream, error) // only for big single item queries
 	Write(items []DlmsSNRequestItem) ([]AccessResultTag, error)
 	Action(item DlmsLNRequestItem) (*DlmsData, error)
 	Set(items []DlmsLNRequestItem) ([]AccessResultTag, error)
@@ -266,10 +267,10 @@ func (d *dlmsal) smallreadout() ([]byte, error) {
 
 		n, err := d.transport.Read(ret[total:])
 		total += n
-		if err == io.EOF {
-			return ret[:total], nil
-		}
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return ret[:total], nil
+			}
 			return nil, err
 		}
 	}
@@ -293,19 +294,19 @@ func (d *dlmsal) Open() error { // login and shits
 	}
 	aare, err := d.smallreadout()
 	if err != nil {
-		return fmt.Errorf("unable to receive snrm: %v", err)
+		return fmt.Errorf("unable to receive snrm: %w", err)
 	}
 	// parse aare
 	tag, _, data, err := decodetag(aare, &d.tmpbuffer)
 	if err != nil {
-		return fmt.Errorf("unable to parse aare: %v", err)
+		return fmt.Errorf("unable to parse aare: %w", err)
 	}
 	if tag != byte(TagAARE) {
 		return fmt.Errorf("unexpected tag: %x", tag)
 	}
 	tags, err := decodeaare(data, &d.tmpbuffer)
 	if err != nil {
-		return fmt.Errorf("unable to parse aare: %v", err)
+		return fmt.Errorf("unable to parse aare: %w", err)
 	}
 	for _, dt := range tags {
 		switch dt.tag {

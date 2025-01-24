@@ -2,6 +2,7 @@ package dlmsal
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 
@@ -41,7 +42,7 @@ func encodelngetitem(dst *bytes.Buffer, item *DlmsLNRequestItem) error {
 		dst.WriteByte(item.AccessDescriptor)
 		err := encodeData(dst, item.AccessData)
 		if err != nil {
-			return fmt.Errorf("unable to encode data: %v", err)
+			return fmt.Errorf("unable to encode data: %w", err)
 		}
 	} else {
 		dst.WriteByte(0)
@@ -99,7 +100,7 @@ func (ln *dlmsalget) get(items []DlmsLNRequestItem) ([]DlmsData, error) {
 	return ln.data, nil
 }
 
-func (ln *dlmsalget) getstream(item DlmsLNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error) {
+func (ln *dlmsalget) getstream(item DlmsLNRequestItem, inmem bool) (DlmsDataStream, error) {
 	master := ln.master
 	local := &master.pdu
 	local.Reset()
@@ -110,39 +111,39 @@ func (ln *dlmsalget) getstream(item DlmsLNRequestItem, inmem bool) (DlmsDataStre
 
 	err := encodelngetitem(local, &item)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// send itself, that could be fun, do that in one step for now
 	tag, str, err := master.sendpdu()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	ln.transport = str
 	return ln.getstreamdata(tag, inmem)
 }
 
-func (ln *dlmsalget) getstreamdata(tag CosemTag, inmem bool) (s DlmsDataStream, e *DlmsError, err error) {
+func (ln *dlmsalget) getstreamdata(tag CosemTag, inmem bool) (s DlmsDataStream, err error) {
 	master := ln.master
 	switch tag {
 	case TagGetResponse:
 	case TagExceptionResponse: // no lower layer readout
 		d, err := decodeException(ln.transport, &master.tmpbuffer)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		ex := d.Value.(DlmsError)
-		return nil, &ex, nil // dont decode exception pdu, maybe todo, should be 2 bytes
+		ex := d.Value.(*DlmsError)
+		return nil, ex // dont decode exception pdu, maybe todo, should be 2 bytes
 	default:
-		return nil, nil, fmt.Errorf("unexpected tag: %02x", tag)
+		return nil, fmt.Errorf("unexpected tag: %02x", tag)
 	}
 	_, err = io.ReadFull(ln.transport, master.tmpbuffer[:2])
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	if master.tmpbuffer[1]&7 != master.invokeid {
-		return nil, nil, fmt.Errorf("unexpected invoke id")
+		return nil, fmt.Errorf("unexpected invoke id")
 	}
 
 	switch getResponseTag(master.tmpbuffer[0]) {
@@ -150,34 +151,33 @@ func (ln *dlmsalget) getstreamdata(tag CosemTag, inmem bool) (s DlmsDataStream, 
 		// decode data themselves
 		_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 
 		if master.tmpbuffer[0] != 0 {
 			_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
-			if err == io.ErrUnexpectedEOF {
-				return nil, &DlmsError{Result: TagAccOtherReason}, nil // this kind of data cant be decoded, so that is why
-			} else {
-				if err != nil {
-					return nil, nil, err
+			if err != nil {
+				if errors.Is(err, io.ErrUnexpectedEOF) {
+					return nil, NewDlmsError(TagAccOtherReason) // this kind of data cant be decoded, so that is why
 				}
+				return nil, err
 			}
-			return nil, &DlmsError{Result: AccessResultTag(master.tmpbuffer[0])}, nil
+			return nil, NewDlmsError(AccessResultTag(master.tmpbuffer[0]))
 		}
 		str, err := newDataStream(ln.transport, inmem, master.logger)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		return str, nil, nil
+		return str, nil
 	case TagGetResponseWithDataBlock: // this is a bit of hell, read till eof from lower layer and then ask for next block and so on
 		ln.state = 1
 		str, err := newDataStream(ln, inmem, master.logger)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		return str, nil, nil
+		return str, nil
 	}
-	return nil, nil, fmt.Errorf("unexpected response tag: %02x", master.tmpbuffer[0])
+	return nil, fmt.Errorf("unexpected response tag: %02x", master.tmpbuffer[0])
 }
 
 func (ln *dlmsalget) getnextdata(tag CosemTag, i int) (cont bool, err error) {
@@ -218,12 +218,13 @@ func (ln *dlmsalget) getnextdata(tag CosemTag, i int) (cont bool, err error) {
 
 			if master.tmpbuffer[0] != 0 {
 				_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
-				if err == io.ErrUnexpectedEOF {
-					ln.data[i] = NewDlmsDataError(TagAccOtherReason) // this kind of data cant be decoded, so that is why
-				} else {
-					if err != nil {
+				if err != nil {
+					if errors.Is(err, io.ErrUnexpectedEOF) {
+						ln.data[i] = NewDlmsDataError(TagAccOtherReason) // this kind of data cant be decoded, so that is why
+					} else {
 						return false, err
 					}
+				} else {
 					ln.data[i] = NewDlmsDataError(AccessResultTag(master.tmpbuffer[0]))
 				}
 			} else {
@@ -406,9 +407,9 @@ func (d *dlmsal) Get(items []DlmsLNRequestItem) ([]DlmsData, error) {
 	return ln.get(items)
 }
 
-func (d *dlmsal) GetStream(item DlmsLNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error) {
+func (d *dlmsal) GetStream(item DlmsLNRequestItem, inmem bool) (DlmsDataStream, error) {
 	if !d.isopen {
-		return nil, nil, base.ErrNotOpened
+		return nil, base.ErrNotOpened
 	}
 
 	ln := &dlmsalget{master: d, state: 0, blockexp: 0}

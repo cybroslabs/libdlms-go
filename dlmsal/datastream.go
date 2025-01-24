@@ -1,6 +1,7 @@
 package dlmsal
 
 import (
+	"errors"
 	"fmt"
 	"io"
 
@@ -101,8 +102,8 @@ func (d *datastream) NextElement() (*DlmsDataStreamItem, error) {
 	_, err := io.ReadFull(d.src, d.buffer[:1])
 	if err != nil {
 		d.inerror = true
-		if err == io.EOF {
-			return nil, fmt.Errorf("unexpected EOF")
+		if errors.Is(err, io.EOF) {
+			return nil, io.ErrUnexpectedEOF
 		}
 		return nil, err
 	}
@@ -142,7 +143,7 @@ func (d *datastream) Close() error { // artifically read out the rest
 		n, err := d.src.Read(rb)
 		cnt += n
 		if err != nil {
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				if d.logger != nil {
 					d.logger.Debugf("data stream readout %v bytes", cnt)
 				}

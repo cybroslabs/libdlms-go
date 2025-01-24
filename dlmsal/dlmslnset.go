@@ -17,7 +17,7 @@ func encodelnsetitem(dst *bytes.Buffer, item *DlmsLNRequestItem) error {
 		dst.WriteByte(item.AccessDescriptor)
 		err := encodeData(dst, item.AccessData)
 		if err != nil {
-			return fmt.Errorf("unable to encode data: %v", err)
+			return fmt.Errorf("unable to encode data: %w", err)
 		}
 	} else {
 		dst.WriteByte(0)
@@ -92,7 +92,7 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]AccessResultTag, error) {
 				if err != nil {
 					return nil, err
 				}
-				ret[0] = (d.Value.(DlmsError)).Result
+				ret[0] = (d.Value.(*DlmsError)).Result
 				return ret, nil
 			default:
 				return nil, fmt.Errorf("unexpected tag: %02x", tag)
@@ -148,7 +148,7 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]AccessResultTag, error) {
 			if err != nil {
 				return nil, err
 			}
-			ret[0] = (d.Value.(DlmsError)).Result
+			ret[0] = (d.Value.(*DlmsError)).Result
 			return ret, nil
 		default:
 			return nil, fmt.Errorf("unexpected tag: %02x", tag)
@@ -260,7 +260,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []AccessResultTag, err err
 					return nil, err
 				}
 				for i := 0; i < len(items); i++ {
-					ret[i] = (d.Value.(DlmsError)).Result
+					ret[i] = (d.Value.(*DlmsError)).Result
 				}
 				return ret, nil
 			default:
@@ -337,7 +337,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []AccessResultTag, err err
 				return nil, err
 			}
 			for i := 0; i < len(items); i++ {
-				ret[i] = (d.Value.(DlmsError)).Result
+				ret[i] = (d.Value.(*DlmsError)).Result
 			}
 			return ret, nil
 		default:

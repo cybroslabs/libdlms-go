@@ -80,9 +80,9 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 	return ret, nil
 }
 
-func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream, *DlmsError, error) {
+func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream, error) {
 	if !d.isopen {
-		return nil, nil, base.ErrNotOpened
+		return nil, base.ErrNotOpened
 	}
 
 	local := &d.pdu
@@ -97,7 +97,7 @@ func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream,
 		local.WriteByte(item.AccessDescriptor)
 		err := encodeData(local, item.AccessData)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	} else {
 		local.WriteByte(2)
@@ -107,40 +107,40 @@ func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream,
 
 	tag, str, err := d.sendpdu()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	if tag != TagReadResponse {
-		return nil, nil, fmt.Errorf("unexpected tag: %x", tag)
+		return nil, fmt.Errorf("unexpected tag: %x", tag)
 	}
 	l, _, err := decodelength(str, &d.tmpbuffer)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if l != 1 {
-		return nil, nil, fmt.Errorf("only one item was expected")
+		return nil, fmt.Errorf("only one item was expected")
 	}
 
 	_, err = io.ReadFull(str, d.tmpbuffer[:1])
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	switch d.tmpbuffer[0] {
 	case 0:
 		str, err := newDataStream(str, inmem, d.logger)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		return str, nil, nil
+		return str, nil
 	case 1:
 		_, err = io.ReadFull(str, d.tmpbuffer[:1])
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-		return nil, &DlmsError{Result: AccessResultTag(d.tmpbuffer[0])}, nil
+		return nil, NewDlmsError(AccessResultTag(d.tmpbuffer[0]))
 	}
 
-	return nil, nil, fmt.Errorf("unexpected response tag: %x", d.tmpbuffer[0])
+	return nil, fmt.Errorf("unexpected response tag: %x", d.tmpbuffer[0])
 }
 
 // write support here

@@ -64,7 +64,7 @@ func (t *tcp) Open() error {
 
 		conn, err := net.DialTimeout("tcp", address, t.timeout)
 		if err != nil {
-			t.logf("Connect to %s failed: %v", address, err)
+			t.logf("Connect to %s failed: %v", address, err.Error())
 
 			return fmt.Errorf("connect failed: %w", err)
 		}

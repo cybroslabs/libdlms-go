@@ -50,11 +50,19 @@ type DlmsData struct {
 }
 
 func NewDlmsDataError(err AccessResultTag) DlmsData {
-	return DlmsData{Tag: TagError, Value: DlmsError{Result: err}}
+	return DlmsData{Tag: TagError, Value: NewDlmsError(err)}
 }
 
 type DlmsError struct {
 	Result AccessResultTag
+}
+
+func (e *DlmsError) Error() string {
+	return fmt.Sprintf("dlms error: %s", e.Result)
+}
+
+func NewDlmsError(result AccessResultTag) error {
+	return &DlmsError{Result: result}
 }
 
 type DlmsCompactArray struct {
@@ -100,7 +108,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:1])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for boolean, %v", err)
+				return data, 0, fmt.Errorf("too short data for boolean, %w", err)
 			}
 			return DlmsData{Tag: tag, Value: tmpbuffer[0] != 0}, 1, nil
 		}
@@ -119,7 +127,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 			}
 			_, err = io.ReadFull(src, tmp)
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for bitstring %v", err)
+				return data, 0, fmt.Errorf("too short data for bitstring %w", err)
 			}
 			val := make([]bool, l)
 			off := uint(0)
@@ -139,7 +147,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:4])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for double long %v", err)
+				return data, 0, fmt.Errorf("too short data for double long %w", err)
 			}
 			v := int32(tmpbuffer[0])<<24 | int32(tmpbuffer[1])<<16 | int32(tmpbuffer[2])<<8 | int32(tmpbuffer[3])
 			return DlmsData{Tag: tag, Value: v}, 4, nil
@@ -148,7 +156,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:4])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for double long unsigned %v", err)
+				return data, 0, fmt.Errorf("too short data for double long unsigned %w", err)
 			}
 			v := uint32(tmpbuffer[0])<<24 | uint32(tmpbuffer[1])<<16 | uint32(tmpbuffer[2])<<8 | uint32(tmpbuffer[3])
 			return DlmsData{Tag: tag, Value: v}, 4, nil
@@ -162,7 +170,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 			v := make([]byte, l)
 			_, err = io.ReadFull(src, v)
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for octet string %v", err)
+				return data, 0, fmt.Errorf("too short data for octet string %w", err)
 			}
 			return DlmsData{Tag: tag, Value: v}, c + int(l), nil
 		}
@@ -175,7 +183,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 			v := make([]byte, l)
 			_, err = io.ReadFull(src, v)
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for visible string %v", err)
+				return data, 0, fmt.Errorf("too short data for visible string %w", err)
 			}
 			return DlmsData{Tag: tag, Value: string(v)}, c + int(l), nil // double copy
 		}
@@ -201,7 +209,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:1])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for bcd %v", err)
+				return data, 0, fmt.Errorf("too short data for bcd %w", err)
 			}
 			v := int(tmpbuffer[0]&0xf) + 10*(int(tmpbuffer[0]>>4)&7)
 			if (tmpbuffer[0] & 0x80) != 0 {
@@ -213,7 +221,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:1])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for integer %v", err)
+				return data, 0, fmt.Errorf("too short data for integer %w", err)
 			}
 			v := int8(tmpbuffer[0])
 			return DlmsData{Tag: tag, Value: v}, 1, nil
@@ -222,7 +230,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:2])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for long %v", err)
+				return data, 0, fmt.Errorf("too short data for long %w", err)
 			}
 			v := int16(tmpbuffer[0])<<8 | int16(tmpbuffer[1])
 			return DlmsData{Tag: tag, Value: v}, 2, nil
@@ -231,7 +239,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:1])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for unsigned/enum %v", err)
+				return data, 0, fmt.Errorf("too short data for unsigned/enum %w", err)
 			}
 			v := uint8(tmpbuffer[0])
 			return DlmsData{Tag: tag, Value: v}, 1, nil
@@ -240,7 +248,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:2])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for long unsigned %v", err)
+				return data, 0, fmt.Errorf("too short data for long unsigned %w", err)
 			}
 			v := uint16(tmpbuffer[0])<<8 | uint16(tmpbuffer[1])
 			return DlmsData{Tag: tag, Value: v}, 2, nil
@@ -249,7 +257,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 		{
 			n, err := io.ReadFull(src, tmpbuffer[:1])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for compact array %v", err)
+				return data, 0, fmt.Errorf("too short data for compact array %w", err)
 			}
 			ctag := dataTag(tmpbuffer[0])
 			var types []dataTag
@@ -267,7 +275,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 				}
 				_, err = io.ReadFull(src, tmp)
 				if err != nil {
-					return data, 0, fmt.Errorf("too short data for compact array (number of structure items), %v", err)
+					return data, 0, fmt.Errorf("too short data for compact array (number of structure items), %w", err)
 				}
 				types = make([]dataTag, l)
 				for i := 0; i < int(l); i++ {
@@ -285,7 +293,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 			// length in bytes, then slice it and traverse through slice till there is something left
 			l, c, err := decodelength(src, tmpbuffer)
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for compact array (length) %v", err)
+				return data, 0, fmt.Errorf("too short data for compact array (length) %w", err)
 			}
 			n += c
 
@@ -342,7 +350,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:8])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for long64 %v", err)
+				return data, 0, fmt.Errorf("too short data for long64 %w", err)
 			}
 			v := int64(tmpbuffer[0])<<56 | int64(tmpbuffer[1])<<48 | int64(tmpbuffer[2])<<40 | int64(tmpbuffer[3])<<32 | int64(tmpbuffer[4])<<24 | int64(tmpbuffer[5])<<16 | int64(tmpbuffer[6])<<8 | int64(tmpbuffer[7])
 			return DlmsData{Tag: tag, Value: v}, 8, nil
@@ -351,7 +359,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:8])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for long64 unsigned %v", err)
+				return data, 0, fmt.Errorf("too short data for long64 unsigned %w", err)
 			}
 			v := uint64(tmpbuffer[0])<<56 | uint64(tmpbuffer[1])<<48 | uint64(tmpbuffer[2])<<40 | uint64(tmpbuffer[3])<<32 | uint64(tmpbuffer[4])<<24 | uint64(tmpbuffer[5])<<16 | uint64(tmpbuffer[6])<<8 | uint64(tmpbuffer[7])
 			return DlmsData{Tag: tag, Value: v}, 8, nil
@@ -360,7 +368,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:4])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for float32 %v", err)
+				return data, 0, fmt.Errorf("too short data for float32 %w", err)
 			}
 			return DlmsData{Tag: tag, Value: math.Float32frombits(binary.BigEndian.Uint32(tmpbuffer[:4]))}, 4, nil
 		}
@@ -368,7 +376,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:8])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for float64 %v", err)
+				return data, 0, fmt.Errorf("too short data for float64 %w", err)
 			}
 			return DlmsData{Tag: tag, Value: math.Float64frombits(binary.BigEndian.Uint64(tmpbuffer[:8]))}, 8, nil
 		}
@@ -376,7 +384,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:12])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for datetime %v", err)
+				return data, 0, fmt.Errorf("too short data for datetime %w", err)
 			}
 			v := DlmsDateTime{
 				Date: DlmsDate{
@@ -400,7 +408,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:5])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for date %v", err)
+				return data, 0, fmt.Errorf("too short data for date %w", err)
 			}
 			v := DlmsDate{
 				Year:      uint16(tmpbuffer[0])<<8 | uint16(tmpbuffer[1]),
@@ -414,7 +422,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 		{
 			_, err = io.ReadFull(src, tmpbuffer[:4])
 			if err != nil {
-				return data, 0, fmt.Errorf("too short data for time %v", err)
+				return data, 0, fmt.Errorf("too short data for time %w", err)
 			}
 			v := DlmsTime{
 				Hour:       tmpbuffer[0],

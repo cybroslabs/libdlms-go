@@ -3,6 +3,7 @@ package gcm
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
@@ -58,7 +59,7 @@ func (g *gcmdecstream10) Read(p []byte) (n int, err error) {
 		copy(g.block[:], g.block[g.blockoffer:g.blockread])
 		n, err = io.ReadFull(g.apdu, g.block[g.blockread-g.blockoffer:])
 		if err != nil {
-			if err == io.ErrUnexpectedEOF || err == io.EOF {
+			if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
 				g.ineof = true
 			} else { // dont process anything more
 				return 0, err
@@ -69,7 +70,7 @@ func (g *gcmdecstream10) Read(p []byte) (n int, err error) {
 	} else { // first round, but handle whole sc+ak + maybe something
 		n, err = io.ReadFull(g.apdu, g.block[g.blockwrite:])
 		if err != nil {
-			if err == io.ErrUnexpectedEOF || err == io.EOF {
+			if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
 				if n < GCM_TAG_LENGTH {
 					return 0, fmt.Errorf("gcm: too short data, no space for tag")
 				}
@@ -165,7 +166,7 @@ func (g *gcmdecstream20) Read(p []byte) (n int, err error) {
 	g.blockread, err = io.ReadFull(g.apdu, g.block[:])
 	g.blockoffset = 0
 	if err != nil {
-		if err == io.ErrUnexpectedEOF || err == io.EOF {
+		if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
 			g.ineof = true
 			if g.blockread == 0 {
 				return 0, io.EOF
@@ -227,7 +228,7 @@ func (g *gcmdecstream30) Read(p []byte) (n int, err error) {
 	copy(g.block[:], g.block[g.blockoffer:g.blockread])
 	n, err = io.ReadFull(g.apdu, g.block[g.blockread-g.blockoffer:])
 	if err != nil {
-		if err == io.ErrUnexpectedEOF || err == io.EOF {
+		if errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
 			g.ineof = true
 		} else { // dont process anything more
 			return 0, err

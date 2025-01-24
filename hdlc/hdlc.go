@@ -1,6 +1,7 @@
 package hdlc
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"time"
@@ -458,12 +459,12 @@ func (w *maclayer) readout() error {
 	for {
 		n, err := w.Read(w.sendbuffer[:])
 		bcnt -= n
-		if err == io.EOF {
-			w.tosend = 0
-			w.state = 1
-			return nil
-		}
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				w.tosend = 0
+				w.state = 1
+				return nil
+			}
 			return err
 		}
 		if bcnt <= 0 {

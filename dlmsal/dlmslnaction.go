@@ -2,6 +2,7 @@ package dlmsal
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 
@@ -30,7 +31,7 @@ func encodelnactionitem(dst *bytes.Buffer, item *DlmsLNRequestItem) error {
 		dst.WriteByte(1)
 		err := encodeData(dst, item.SetData)
 		if err != nil {
-			return fmt.Errorf("unable to encode data: %v", err)
+			return fmt.Errorf("unable to encode data: %w", err)
 		}
 	} else {
 		dst.WriteByte(0)
@@ -100,7 +101,7 @@ func (ln *dlmsalaction) actiondata(tag CosemTag) (data *DlmsData, err error) {
 
 			_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
 			if err != nil {
-				if err == io.EOF || err == io.ErrUnexpectedEOF {
+				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 					return nil, nil
 				}
 				return

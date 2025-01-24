@@ -1,7 +1,7 @@
 package dlmsal
 
 import (
-	"fmt"
+	"errors"
 	"io"
 )
 
@@ -11,15 +11,15 @@ func decodeException(src io.Reader, tmp *tmpbuffer) (e DlmsData, err error) {
 	switch n {
 	case 0:
 		e = NewDlmsDataError(TagAccOtherReason)
-	case 1:
-		e = NewDlmsDataError(TagAccOtherReason) // not decoding state-error
-	case 2:
-		e = NewDlmsDataError(TagAccOtherReason) // not decoding service error
+	case 1, 2:
+		e = NewDlmsDataError(TagAccOtherReason) // not decoding state-error or service-error
 	default:
-		err = fmt.Errorf("programatic error, unexpected read bytes count")
+		panic("programatic error, unexpected read bytes count")
 	}
-	if err == io.EOF || err == io.ErrUnexpectedEOF {
-		err = nil
+	if err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			err = nil
+		}
 	}
 	return
 }
