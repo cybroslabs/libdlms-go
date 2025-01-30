@@ -49,19 +49,19 @@ type DlmsData struct {
 	Tag   dataTag
 }
 
-func NewDlmsDataError(err AccessResultTag) DlmsData {
+func NewDlmsDataError(err DlmsResultTag) DlmsData {
 	return DlmsData{Tag: TagError, Value: NewDlmsError(err)}
 }
 
 type DlmsError struct {
-	Result AccessResultTag
+	Result DlmsResultTag
 }
 
 func (e *DlmsError) Error() string {
 	return fmt.Sprintf("dlms error: %s", e.Result)
 }
 
-func NewDlmsError(result AccessResultTag) error {
+func NewDlmsError(result DlmsResultTag) error {
 	return &DlmsError{Result: result}
 }
 

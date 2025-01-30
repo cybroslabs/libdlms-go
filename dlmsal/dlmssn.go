@@ -71,7 +71,7 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 			if err != nil {
 				return nil, err
 			}
-			ret[i] = NewDlmsDataError(AccessResultTag(d.tmpbuffer[0]))
+			ret[i] = NewDlmsDataError(DlmsResultTag(d.tmpbuffer[0]))
 		default:
 			return nil, fmt.Errorf("unexpected response tag: %x", d.tmpbuffer[0])
 		}
@@ -137,14 +137,14 @@ func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream,
 		if err != nil {
 			return nil, err
 		}
-		return nil, NewDlmsError(AccessResultTag(d.tmpbuffer[0]))
+		return nil, NewDlmsError(DlmsResultTag(d.tmpbuffer[0]))
 	}
 
 	return nil, fmt.Errorf("unexpected response tag: %x", d.tmpbuffer[0])
 }
 
 // write support here
-func (d *dlmsal) Write(items []DlmsSNRequestItem) ([]AccessResultTag, error) {
+func (d *dlmsal) Write(items []DlmsSNRequestItem) ([]DlmsResultTag, error) {
 	if !d.isopen {
 		return nil, base.ErrNotOpened
 	}
@@ -196,7 +196,7 @@ func (d *dlmsal) Write(items []DlmsSNRequestItem) ([]AccessResultTag, error) {
 	if l != uint(len(items)) {
 		return nil, fmt.Errorf("different amount of data received")
 	}
-	ret := make([]AccessResultTag, len(items))
+	ret := make([]DlmsResultTag, len(items))
 	for i := 0; i < len(ret); i++ {
 		_, err = io.ReadFull(str, d.tmpbuffer[:1])
 		if err != nil {
@@ -204,16 +204,16 @@ func (d *dlmsal) Write(items []DlmsSNRequestItem) ([]AccessResultTag, error) {
 		}
 		switch d.tmpbuffer[0] {
 		case 0:
-			ret[i] = TagAccSuccess
+			ret[i] = TagResultSuccess
 		case 1:
 			_, err = io.ReadFull(str, d.tmpbuffer[:1])
 			if err != nil {
 				return nil, err
 			}
 			if d.tmpbuffer[0] == 0 {
-				ret[i] = TagAccOtherReason
+				ret[i] = TagResultOtherReason
 			} else {
-				ret[i] = AccessResultTag(d.tmpbuffer[0])
+				ret[i] = DlmsResultTag(d.tmpbuffer[0])
 			}
 		default:
 			return nil, fmt.Errorf("unexpected write response item: %x", d.tmpbuffer[0])

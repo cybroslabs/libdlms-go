@@ -158,11 +158,11 @@ func (ln *dlmsalget) getstreamdata(tag CosemTag, inmem bool) (s DlmsDataStream, 
 			_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
 			if err != nil {
 				if errors.Is(err, io.ErrUnexpectedEOF) {
-					return nil, NewDlmsError(TagAccOtherReason) // this kind of data cant be decoded, so that is why
+					return nil, NewDlmsError(TagResultOtherReason) // this kind of data cant be decoded, so that is why
 				}
 				return nil, err
 			}
-			return nil, NewDlmsError(AccessResultTag(master.tmpbuffer[0]))
+			return nil, NewDlmsError(DlmsResultTag(master.tmpbuffer[0]))
 		}
 		str, err := newDataStream(ln.transport, inmem, master.logger)
 		if err != nil {
@@ -220,12 +220,12 @@ func (ln *dlmsalget) getnextdata(tag CosemTag, i int) (cont bool, err error) {
 				_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
 				if err != nil {
 					if errors.Is(err, io.ErrUnexpectedEOF) {
-						ln.data[i] = NewDlmsDataError(TagAccOtherReason) // this kind of data cant be decoded, so that is why
+						ln.data[i] = NewDlmsDataError(TagResultOtherReason) // this kind of data cant be decoded, so that is why
 					} else {
 						return false, err
 					}
 				} else {
-					ln.data[i] = NewDlmsDataError(AccessResultTag(master.tmpbuffer[0]))
+					ln.data[i] = NewDlmsDataError(DlmsResultTag(master.tmpbuffer[0]))
 				}
 			} else {
 				ln.data[i], _, err = decodeDataTag(ln.transport, &master.tmpbuffer)
@@ -253,7 +253,7 @@ func (ln *dlmsalget) getnextdata(tag CosemTag, i int) (cont bool, err error) {
 					if err != nil {
 						return false, err
 					}
-					ln.data[i] = NewDlmsDataError(AccessResultTag(master.tmpbuffer[0]))
+					ln.data[i] = NewDlmsDataError(DlmsResultTag(master.tmpbuffer[0]))
 				} else {
 					ln.data[i], _, err = decodeDataTag(ln.transport, &master.tmpbuffer)
 					if err != nil {
@@ -301,7 +301,7 @@ func (ln *dlmsalget) decodedata(i int) (err error) {
 		if err != nil {
 			return
 		}
-		ln.data[i] = NewDlmsDataError(AccessResultTag(master.tmpbuffer[0]))
+		ln.data[i] = NewDlmsDataError(DlmsResultTag(master.tmpbuffer[0]))
 	} else {
 		ln.data[i], _, err = decodeDataTag(ln, &master.tmpbuffer)
 	}

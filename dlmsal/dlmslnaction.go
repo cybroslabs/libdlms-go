@@ -95,7 +95,7 @@ func (ln *dlmsalaction) actiondata(tag CosemTag) (data *DlmsData, err error) {
 
 			ln.state = 100
 			if master.tmpbuffer[0] != 0 {
-				d := NewDlmsDataError(AccessResultTag(master.tmpbuffer[0]))
+				d := NewDlmsDataError(DlmsResultTag(master.tmpbuffer[0]))
 				return &d, nil
 			}
 
@@ -118,7 +118,7 @@ func (ln *dlmsalaction) actiondata(tag CosemTag) (data *DlmsData, err error) {
 				if err != nil {
 					return
 				}
-				rd := NewDlmsDataError(AccessResultTag(master.tmpbuffer[0]))
+				rd := NewDlmsDataError(DlmsResultTag(master.tmpbuffer[0]))
 				return &rd, nil
 			}
 

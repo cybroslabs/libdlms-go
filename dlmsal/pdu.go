@@ -56,26 +56,26 @@ const (
 	TagExceptionResponse           CosemTag = 216
 )
 
-type AccessResultTag byte
+type DlmsResultTag byte
 
 const (
 	// DataAccessResult
-	TagAccSuccess                 AccessResultTag = 0
-	TagAccHardwareFault           AccessResultTag = 1
-	TagAccTemporaryFailure        AccessResultTag = 2
-	TagAccReadWriteDenied         AccessResultTag = 3
-	TagAccObjectUndefined         AccessResultTag = 4
-	TagAccObjectClassInconsistent AccessResultTag = 9
-	TagAccObjectUnavailable       AccessResultTag = 11
-	TagAccTypeUnmatched           AccessResultTag = 12
-	TagAccScopeAccessViolated     AccessResultTag = 13
-	TagAccDataBlockUnavailable    AccessResultTag = 14
-	TagAccLongGetAborted          AccessResultTag = 15
-	TagAccNoLongGetInProgress     AccessResultTag = 16
-	TagAccLongSetAborted          AccessResultTag = 17
-	TagAccNoLongSetInProgress     AccessResultTag = 18
-	TagAccDataBlockNumberInvalid  AccessResultTag = 19
-	TagAccOtherReason             AccessResultTag = 250
+	TagResultSuccess                 DlmsResultTag = 0
+	TagResultHardwareFault           DlmsResultTag = 1
+	TagResultTemporaryFailure        DlmsResultTag = 2
+	TagResultReadWriteDenied         DlmsResultTag = 3
+	TagResultObjectUndefined         DlmsResultTag = 4
+	TagResultObjectClassInconsistent DlmsResultTag = 9
+	TagResultObjectUnavailable       DlmsResultTag = 11
+	TagResultTypeUnmatched           DlmsResultTag = 12
+	TagResultScopeAccessViolated     DlmsResultTag = 13
+	TagResultDataBlockUnavailable    DlmsResultTag = 14
+	TagResultLongGetAborted          DlmsResultTag = 15
+	TagResultNoLongGetInProgress     DlmsResultTag = 16
+	TagResultLongSetAborted          DlmsResultTag = 17
+	TagResultNoLongSetInProgress     DlmsResultTag = 18
+	TagResultDataBlockNumberInvalid  DlmsResultTag = 19
+	TagResultOtherReason             DlmsResultTag = 250
 )
 
 type getRequestTag byte
@@ -134,39 +134,39 @@ const (
 	TagActionResponseNextPBlock actionResponseTag = 0x4
 )
 
-func (s AccessResultTag) String() string {
+func (s DlmsResultTag) String() string {
 	switch s {
-	case TagAccSuccess:
+	case TagResultSuccess:
 		return "success"
-	case TagAccHardwareFault:
+	case TagResultHardwareFault:
 		return "hardware-fault"
-	case TagAccTemporaryFailure:
+	case TagResultTemporaryFailure:
 		return "temporary-failure"
-	case TagAccReadWriteDenied:
+	case TagResultReadWriteDenied:
 		return "read-write-denied"
-	case TagAccObjectUndefined:
+	case TagResultObjectUndefined:
 		return "object-undefined"
-	case TagAccObjectClassInconsistent:
+	case TagResultObjectClassInconsistent:
 		return "object-class-inconsistent"
-	case TagAccObjectUnavailable:
+	case TagResultObjectUnavailable:
 		return "object-unavailable"
-	case TagAccTypeUnmatched:
+	case TagResultTypeUnmatched:
 		return "type-unmatched"
-	case TagAccScopeAccessViolated:
+	case TagResultScopeAccessViolated:
 		return "scope-of-access-violated"
-	case TagAccDataBlockUnavailable:
+	case TagResultDataBlockUnavailable:
 		return "data-block-unavailable"
-	case TagAccLongGetAborted:
+	case TagResultLongGetAborted:
 		return "long-get-aborted"
-	case TagAccNoLongGetInProgress:
+	case TagResultNoLongGetInProgress:
 		return "no-long-get-in-progress"
-	case TagAccLongSetAborted:
+	case TagResultLongSetAborted:
 		return "long-set-aborted"
-	case TagAccNoLongSetInProgress:
+	case TagResultNoLongSetInProgress:
 		return "no-long-set-in-progress"
-	case TagAccDataBlockNumberInvalid:
+	case TagResultDataBlockNumberInvalid:
 		return "data-block-number-invalid"
-	case TagAccOtherReason:
+	case TagResultOtherReason:
 		return "other-reason"
 	default:
 		return "unknown"

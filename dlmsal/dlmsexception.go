@@ -10,9 +10,9 @@ func decodeException(src io.Reader, tmp *tmpbuffer) (e DlmsData, err error) {
 	n, err = io.ReadFull(src, tmp[:2])
 	switch n {
 	case 0:
-		e = NewDlmsDataError(TagAccOtherReason)
+		e = NewDlmsDataError(TagResultOtherReason)
 	case 1, 2:
-		e = NewDlmsDataError(TagAccOtherReason) // not decoding state-error or service-error
+		e = NewDlmsDataError(TagResultOtherReason) // not decoding state-error or service-error
 	default:
 		panic("programatic error, unexpected read bytes count")
 	}

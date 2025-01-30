@@ -25,7 +25,7 @@ func encodelnsetitem(dst *bytes.Buffer, item *DlmsLNRequestItem) error {
 	return nil
 }
 
-func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]AccessResultTag, error) {
+func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]DlmsResultTag, error) {
 	local := &al.pdu
 	local.Reset()
 	local.WriteByte(byte(TagSetRequest))
@@ -43,7 +43,7 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]AccessResultTag, error) {
 		return nil, err
 	}
 
-	ret := make([]AccessResultTag, 1)
+	ret := make([]DlmsResultTag, 1)
 
 	if local.Len()+sdata.Len() > al.maxPduSendSize-6-gcm.GCM_TAG_LENGTH { // block transfer, count on 6 bytes for tag and worst length and tag, ok, possible byte wasting here
 		local.Reset() // possible large memory allocated here, but only for one job
@@ -130,7 +130,7 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]AccessResultTag, error) {
 				if blno != binary.BigEndian.Uint32(al.tmpbuffer[3:]) {
 					return nil, fmt.Errorf("unexpected block number")
 				}
-				ret[0] = AccessResultTag(al.tmpbuffer[2])
+				ret[0] = DlmsResultTag(al.tmpbuffer[2])
 			default:
 				return nil, fmt.Errorf("unexpected tag: %02x", al.tmpbuffer[0])
 			}
@@ -165,12 +165,12 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]AccessResultTag, error) {
 			return nil, fmt.Errorf("unexpected invoke id")
 		}
 
-		ret[0] = AccessResultTag(al.tmpbuffer[2])
+		ret[0] = DlmsResultTag(al.tmpbuffer[2])
 	}
 	return ret, nil
 }
 
-func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []AccessResultTag, err error) {
+func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []DlmsResultTag, err error) {
 	if !al.isopen {
 		return nil, base.ErrNotOpened
 	}
@@ -207,7 +207,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []AccessResultTag, err err
 		}
 	}
 
-	ret = make([]AccessResultTag, len(items))
+	ret = make([]DlmsResultTag, len(items))
 
 	if local.Len()+sdata.Len() > al.maxPduSendSize-6-gcm.GCM_TAG_LENGTH { // block transfer, count on 6 bytes for tag and worst length and tag, ok, possible byte wasting here
 		local.Reset()
@@ -317,7 +317,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []AccessResultTag, err err
 					return nil, fmt.Errorf("unexpected block number")
 				}
 				for i := 0; i < len(items); i++ {
-					ret[i] = AccessResultTag(res[i])
+					ret[i] = DlmsResultTag(res[i])
 				}
 			default:
 				return nil, fmt.Errorf("unexpected tag: %02x", al.tmpbuffer[0])
@@ -373,7 +373,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []AccessResultTag, err err
 			return nil, err
 		}
 		for i := 0; i < len(items); i++ {
-			ret[i] = AccessResultTag(res[i])
+			ret[i] = DlmsResultTag(res[i])
 		}
 	}
 	return ret, nil
