@@ -16,6 +16,8 @@ const (
 	SerialNoFlowControl      = 1
 	SerialSWFlowControl      = 2
 	SerialHWFlowControl      = 3
+	SerialDCDFlowControl     = 17
+	SerialDSRFlowControl     = 19
 )
 
 type SerialStream interface {

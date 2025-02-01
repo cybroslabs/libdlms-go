@@ -83,40 +83,47 @@ func (r *rfc2217Serial) Open() error {
 
 	// set basic telnet options like binary, echo and go ahead ability (seen from other source)
 	r.logf("negotiating telnet options")
-	if err := r.writeOption(BINARY_OPTION, WILL); err != nil {
-		return err
-	}
-	if err := r.writeOption(SGA_OPTION, WILL); err != nil {
-		return err
-	}
-	if err := r.writeOption(COM_PORT_OPTION, WILL); err != nil {
-		return err
-	}
+	r.writebuffer = r.writeOption(r.writebuffer[:0], BINARY_OPTION, WILL)
+	r.writebuffer = r.writeOption(r.writebuffer, SGA_OPTION, WILL)
+	r.writebuffer = r.writeOption(r.writebuffer, COM_PORT_OPTION, WILL)
 	// do purge here?
-	if err := r.sendSubnegotiation(12, []byte{0x03}); err != nil { // purge data
-		return err
-	}
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 12, []byte{0x03}) // purge data
 	// is there really at least some answer? or handle negotiation during reading itself?
 	// but according to RFC855, binary is by default false, so at least some answer should be here, same for SGA, dont know how com port option... this is a bit weird
 	// also send some artifical signature
+	r.writebuffer = r.writeSignature(r.writebuffer)
+
+	// request current settings (baud rate, control, parity, data bits, stop bits)
+	cmd := []byte{0, 0, 0, 0}
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 1, cmd[:])  // request baud rate
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 2, cmd[:1]) // data size
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 3, cmd[:1]) // parity
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 4, cmd[:1]) // stop bits
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 5, cmd[:1]) // control
+
 	r.isopen = true
-	return r.writeSignature()
+	return r.transport.Write(r.writebuffer)
 }
 
-func (r *rfc2217Serial) writeOption(option byte, intent byte) error {
-	return r.transport.Write([]byte{IAC, intent, option})
+func (r *rfc2217Serial) writeOption(src []byte, option byte, intent byte) []byte {
+	return append(src, IAC, intent, option)
 }
 
-func (r *rfc2217Serial) writeSignature() error {
-	var buffer [6 + len(Signature)]byte // signature doesnt containt IAC
-	buffer[0] = IAC
-	buffer[1] = SB
-	buffer[2] = COM_PORT_OPTION
-	buffer[3] = 0 // suboption signature, cant find it written damn it, if there is no text then the fuck no zero and directly IAC,SE ?
-	copy(buffer[4:], Signature)
-	buffer[4+len(Signature)] = IAC
-	buffer[5+len(Signature)] = SE
-	return r.transport.Write(buffer[:])
+func (r *rfc2217Serial) writeSignature(src []byte) []byte {
+	src = append(src, IAC, SB, COM_PORT_OPTION, 0)
+	src = append(src, Signature...)
+	return append(src, IAC, SE)
+}
+
+func (r *rfc2217Serial) writeSubnegotiation(src []byte, cmd byte, value []byte) []byte {
+	src = append(src, IAC, SB, COM_PORT_OPTION, cmd)
+	for _, b := range value { // maybe a bit too much
+		if b == IAC {
+			src = append(src, IAC)
+		}
+		src = append(src, b)
+	}
+	return append(src, IAC, SE)
 }
 
 func (r *rfc2217Serial) getCode() (byte, error) {
@@ -163,7 +170,7 @@ func (r *rfc2217Serial) processCommand(cmd byte) (err error) {
 		case BINARY_OPTION, SGA_OPTION, COM_PORT_OPTION:
 		default:
 			r.logf("other party has intent to do %v", code)
-			return r.writeOption(code, WONT)
+			return r.transport.Write([]byte{IAC, WONT, code}) // immediate response
 		}
 	case DONT:
 		code, err = r.getCode()
@@ -176,7 +183,7 @@ func (r *rfc2217Serial) processCommand(cmd byte) (err error) {
 			return fmt.Errorf("unsupported mandatory option")
 		default:
 			r.logf("other party has intent not to do %v", code)
-			return r.writeOption(code, WONT)
+			return r.transport.Write([]byte{IAC, WONT, code})
 		}
 	case SB:
 		return r.handleSubnegotiation()
@@ -233,7 +240,8 @@ func (r *rfc2217Serial) processSubnegotiation(sub []byte) error {
 	switch sub[0] {
 	case 0: // signature
 		if len(sub) == 1 { // wanted signature?
-			return r.writeSignature()
+			r.writebuffer = r.writeSignature(r.writebuffer[:0])
+			return r.transport.Write(r.writebuffer)
 		}
 		r.logf("signature: \"%s\"", strings.Trim(string(sub[1:]), "\x00 \n\r\t"))
 	case 101: // set baud rate
@@ -280,7 +288,7 @@ func (r *rfc2217Serial) processSubnegotiation(sub []byte) error {
 			return fmt.Errorf("invalid subnegotiation length")
 		}
 		switch sub[1] {
-		case base.SerialNoFlowControl, base.SerialSWFlowControl, base.SerialHWFlowControl:
+		case base.SerialNoFlowControl, base.SerialSWFlowControl, base.SerialHWFlowControl, base.SerialDCDFlowControl, base.SerialDSRFlowControl:
 			r.control = int(sub[1])
 			r.logf("reported control: %d", r.control)
 		default:
@@ -371,19 +379,6 @@ func (r *rfc2217Serial) SetMaxReceivedBytes(m int64) {
 	r.transport.SetMaxReceivedBytes(m)
 }
 
-func (r *rfc2217Serial) sendSubnegotiation(cmd byte, value []byte) error {
-	r.writebuffer = r.writebuffer[:0]
-	r.writebuffer = append(r.writebuffer, IAC, SB, COM_PORT_OPTION, cmd)
-	for _, b := range value { // maybe a bit too much
-		if b == IAC {
-			r.writebuffer = append(r.writebuffer, IAC)
-		}
-		r.writebuffer = append(r.writebuffer, b)
-	}
-	r.writebuffer = append(r.writebuffer, IAC, SE)
-	return r.transport.Write(r.writebuffer)
-}
-
 // SetFlowControl implements SerialStream.
 func (r *rfc2217Serial) SetFlowControl(flowControl int) error {
 	if !r.isopen {
@@ -391,12 +386,13 @@ func (r *rfc2217Serial) SetFlowControl(flowControl int) error {
 	}
 
 	switch flowControl {
-	case base.SerialNoFlowControl, base.SerialSWFlowControl, base.SerialHWFlowControl:
+	case base.SerialNoFlowControl, base.SerialSWFlowControl, base.SerialHWFlowControl, base.SerialDCDFlowControl, base.SerialDSRFlowControl:
 	default:
 		return fmt.Errorf("unsupported flow control %d", flowControl)
 	}
 
-	return r.sendSubnegotiation(5, []byte{byte(flowControl)})
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer[:0], 5, []byte{byte(flowControl)})
+	return r.transport.Write(r.writebuffer)
 }
 
 // SetSpeed implements SerialStream.
@@ -428,26 +424,14 @@ func (r *rfc2217Serial) SetSpeed(baudRate int, dataBits int, parity int, stopBit
 	}
 
 	binary.BigEndian.PutUint32(cmd[:], uint32(baudRate))
-	err := r.sendSubnegotiation(1, cmd[:])
-	if err != nil {
-		return fmt.Errorf("unable to set baudrate: %w", err)
-	}
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer[:0], 1, cmd[:])
 	cmd[0] = byte(dataBits)
-	err = r.sendSubnegotiation(2, cmd[:1])
-	if err != nil {
-		return fmt.Errorf("unable to set data bits: %w", err)
-	}
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 2, cmd[:1])
 	cmd[0] = byte(parity)
-	err = r.sendSubnegotiation(3, cmd[:1])
-	if err != nil {
-		return fmt.Errorf("unable to set parity: %w", err)
-	}
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 3, cmd[:1])
 	cmd[0] = byte(stopBits)
-	err = r.sendSubnegotiation(4, cmd[:1])
-	if err != nil {
-		return fmt.Errorf("unable to set stop bits: %w", err)
-	}
-	return nil
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 4, cmd[:1])
+	return r.transport.Write(r.writebuffer)
 }
 
 // Write implements SerialStream.
@@ -458,7 +442,7 @@ func (r *rfc2217Serial) Write(src []byte) error {
 	if len(src) == 0 {
 		return nil
 	}
-	// escape IAC bytes
+	// escape IAC bytes, llimit size and chunk that thing, even not optimally due to lower MTU?
 	r.writebuffer = r.writebuffer[:0]
 	for _, b := range src {
 		if b == IAC {
