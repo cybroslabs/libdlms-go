@@ -67,6 +67,10 @@ func (l *llc) SetMaxReceivedBytes(m int64) {
 	l.transport.SetMaxReceivedBytes(m)
 }
 
+func (l *llc) SetTimeout(t time.Duration) {
+	l.transport.SetTimeout(t)
+}
+
 func (l *llc) SetDeadline(t time.Time) {
 	l.transport.SetDeadline(t)
 }

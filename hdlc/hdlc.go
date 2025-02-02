@@ -477,6 +477,10 @@ func (w *maclayer) SetMaxReceivedBytes(m int64) {
 	w.transport.SetMaxReceivedBytes(m)
 }
 
+func (w *maclayer) SetTimeout(t time.Duration) {
+	w.transport.SetTimeout(t)
+}
+
 func (w *maclayer) SetDeadline(t time.Time) {
 	w.transport.SetDeadline(t)
 }

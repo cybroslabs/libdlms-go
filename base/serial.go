@@ -25,4 +25,5 @@ type SerialStream interface {
 
 	SetSpeed(baudRate int, dataBits int, parity int, stopBits int) error
 	SetFlowControl(flowControl int) error
+	SetDTR(dtr bool) error
 }

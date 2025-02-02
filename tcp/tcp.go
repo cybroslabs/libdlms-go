@@ -98,23 +98,37 @@ func (t *tcp) SetMaxReceivedBytes(m int64) {
 	t.maxincoming = m
 }
 
+func (t *tcp) SetTimeout(to time.Duration) {
+	t.timeout = to
+	t.setcommdeadline()
+}
+
 func (t *tcp) SetDeadline(d time.Time) {
 	t.deadline = d
+	t.setcommdeadline()
 }
 
 func (t *tcp) SetLogger(logger *zap.SugaredLogger) {
 	t.logger = logger
 }
 
-func (t *tcp) setcommdeadline() {
-	cd := time.Now().Add(t.timeout)
+func (t *tcp) setcommdeadline() { // yes, this is shit
+	var zero time.Time
 	if t.deadline.IsZero() {
-		_ = t.conn.SetDeadline(cd)
+		if t.timeout == 0 {
+			_ = t.conn.SetDeadline(zero) // i dont have to call every time, but this simulates timeout
+		}
+		_ = t.conn.SetDeadline(time.Now().Add(t.timeout))
 	} else {
-		if cd.Compare(t.deadline) < 0 {
-			_ = t.conn.SetDeadline(cd)
-		} else {
+		if t.timeout == 0 {
 			_ = t.conn.SetDeadline(t.deadline)
+		} else {
+			cd := time.Now().Add(t.timeout)
+			if cd.Before(t.deadline) {
+				_ = t.conn.SetDeadline(cd)
+			} else {
+				_ = t.conn.SetDeadline(t.deadline)
+			}
 		}
 	}
 }

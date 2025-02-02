@@ -365,6 +365,10 @@ func (r *rfc2217Serial) Read(p []byte) (n int, err error) {
 	return
 }
 
+func (r *rfc2217Serial) SetTimeout(t time.Duration) {
+	r.transport.SetTimeout(t)
+}
+
 // SetDeadline implements SerialStream.
 func (r *rfc2217Serial) SetDeadline(t time.Time) {
 	r.transport.SetDeadline(t)
@@ -381,6 +385,19 @@ func (r *rfc2217Serial) SetMaxReceivedBytes(m int64) {
 	r.transport.SetMaxReceivedBytes(m)
 }
 
+func (r *rfc2217Serial) SetDTR(dtr bool) error {
+	if !r.isopen {
+		return base.ErrNotOpened
+	}
+
+	setdtr := byte(8)
+	if !dtr {
+		setdtr = 9
+	}
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer[:0], 5, []byte{setdtr})
+	return r.transport.Write(r.writebuffer)
+}
+
 // SetFlowControl implements SerialStream.
 func (r *rfc2217Serial) SetFlowControl(flowControl int) error {
 	if !r.isopen {
@@ -394,6 +411,9 @@ func (r *rfc2217Serial) SetFlowControl(flowControl int) error {
 	}
 
 	r.writebuffer = r.writeSubnegotiation(r.writebuffer[:0], 5, []byte{byte(flowControl)})
+	if flowControl == base.SerialNoFlowControl { // set RTS to true by force
+		r.writebuffer = r.writeSubnegotiation(r.writebuffer, 5, []byte{11})
+	}
 	return r.transport.Write(r.writebuffer)
 }
 

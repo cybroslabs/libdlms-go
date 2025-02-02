@@ -56,6 +56,10 @@ func (w *wrapper) SetMaxReceivedBytes(m int64) {
 	w.transport.SetMaxReceivedBytes(m)
 }
 
+func (w *wrapper) SetTimeout(to time.Duration) {
+	w.transport.SetTimeout(to)
+}
+
 func (w *wrapper) SetDeadline(t time.Time) {
 	w.transport.SetDeadline(t)
 }
