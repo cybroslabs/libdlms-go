@@ -117,6 +117,11 @@ func (r *rfc2217Serial) Open() error {
 		cmd[0] = 11
 		r.writebuffer = r.writeSubnegotiation(r.writebuffer, 5, cmd[:1])
 	}
+	r.baudrate = r.settings.BaudRate
+	r.databits = r.settings.DataBits
+	r.parity = r.settings.Parity
+	r.stopbits = r.settings.StopBits
+	r.control = r.settings.FlowControl
 	r.isopen = true
 	return r.transport.Write(r.writebuffer)
 }
