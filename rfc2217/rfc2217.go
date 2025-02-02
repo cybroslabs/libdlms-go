@@ -26,6 +26,8 @@ const (
 	DONT = 254 // 0xfe
 
 	Signature = "DLMS-Serial-Client"
+
+	writeChunk = 2048
 )
 
 type rfc2217Serial struct {
@@ -442,9 +444,15 @@ func (r *rfc2217Serial) Write(src []byte) error {
 	if len(src) == 0 {
 		return nil
 	}
-	// escape IAC bytes, llimit size and chunk that thing, even not optimally due to lower MTU?
+	// escape IAC bytes, limit size and chunk that thing, even not optimally due to lower MTU?
 	r.writebuffer = r.writebuffer[:0]
 	for _, b := range src {
+		if len(r.writebuffer) >= writeChunk {
+			if err := r.transport.Write(r.writebuffer); err != nil {
+				return err
+			}
+			r.writebuffer = r.writebuffer[:0]
+		}
 		if b == IAC {
 			r.writebuffer = append(r.writebuffer, IAC)
 		}
