@@ -1,29 +1,42 @@
 package base
 
+type SerialDataBits int
+type SerialParity int
+type SerialStopBits int
+type SerialFlowControl int
+
 const (
-	Serial5DataBits          = 5
-	Serial6DataBits          = 6
-	Serial7DataBits          = 7
-	Serial8DataBits          = 8
-	SerialNoParity           = 1
-	SerialOddParity          = 2
-	SerialEvenParity         = 3
-	SerialMarkParity         = 4
-	SerialSpaceParity        = 5
-	SerialOneStopBit         = 1
-	SerialTwoStopBits        = 2
-	SerialOneAndHalfStopBits = 3
-	SerialNoFlowControl      = 1
-	SerialSWFlowControl      = 2
-	SerialHWFlowControl      = 3
-	SerialDCDFlowControl     = 17
-	SerialDSRFlowControl     = 19
+	Serial5DataBits          SerialDataBits    = 5
+	Serial6DataBits          SerialDataBits    = 6
+	Serial7DataBits          SerialDataBits    = 7
+	Serial8DataBits          SerialDataBits    = 8
+	SerialNoParity           SerialParity      = 1
+	SerialOddParity          SerialParity      = 2
+	SerialEvenParity         SerialParity      = 3
+	SerialMarkParity         SerialParity      = 4
+	SerialSpaceParity        SerialParity      = 5
+	SerialOneStopBit         SerialStopBits    = 1
+	SerialTwoStopBits        SerialStopBits    = 2
+	SerialOneAndHalfStopBits SerialStopBits    = 3
+	SerialNoFlowControl      SerialFlowControl = 1
+	SerialSWFlowControl      SerialFlowControl = 2
+	SerialHWFlowControl      SerialFlowControl = 3
+	SerialDCDFlowControl     SerialFlowControl = 17
+	SerialDSRFlowControl     SerialFlowControl = 19
 )
+
+type SerialStreamSettings struct {
+	BaudRate    int
+	DataBits    SerialDataBits
+	Parity      SerialParity
+	StopBits    SerialStopBits
+	FlowControl SerialFlowControl
+}
 
 type SerialStream interface {
 	Stream
 
-	SetSpeed(baudRate int, dataBits int, parity int, stopBits int) error
-	SetFlowControl(flowControl int) error
+	SetSpeed(baudRate int, dataBits SerialDataBits, parity SerialParity, stopBits SerialStopBits) error
+	SetFlowControl(flowControl SerialFlowControl) error
 	SetDTR(dtr bool) error
 }

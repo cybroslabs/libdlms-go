@@ -35,12 +35,14 @@ type rfc2217Serial struct {
 	isopen      bool
 	writebuffer []byte
 
+	settings base.SerialStreamSettings
+
 	// status variables
 	baudrate   int
-	databits   int
-	parity     int
-	stopbits   int
-	control    int
+	databits   base.SerialDataBits
+	parity     base.SerialParity
+	stopbits   base.SerialStopBits
+	control    base.SerialFlowControl
 	linestate  byte
 	modemstate byte
 
@@ -75,6 +77,13 @@ func (r *rfc2217Serial) Open() error {
 		return nil
 	}
 
+	if err := sanityControl(r.settings.FlowControl); err != nil {
+		return err
+	}
+	if err := sanitySpeed(r.settings.BaudRate, r.settings.DataBits, r.settings.Parity, r.settings.StopBits); err != nil {
+		return err
+	}
+
 	if err := r.transport.Open(); err != nil {
 		return err
 	}
@@ -91,14 +100,23 @@ func (r *rfc2217Serial) Open() error {
 	// also send some artifical signature
 	r.writebuffer = r.writeSignature(r.writebuffer)
 
-	// request current settings (baud rate, control, parity, data bits, stop bits)
-	cmd := []byte{0, 0, 0, 0}
-	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 1, cmd[:])  // request baud rate
-	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 2, cmd[:1]) // data size
-	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 3, cmd[:1]) // parity
-	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 4, cmd[:1]) // stop bits
-	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 5, cmd[:1]) // control
+	// set desired settings
+	var cmd [4]byte
+	binary.BigEndian.PutUint32(cmd[:], uint32(r.settings.BaudRate))
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 1, cmd[:])
+	cmd[0] = byte(r.settings.DataBits)
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 2, cmd[:1])
+	cmd[0] = byte(r.settings.Parity)
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 3, cmd[:1])
+	cmd[0] = byte(r.settings.StopBits)
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 4, cmd[:1])
 
+	cmd[0] = byte(r.settings.FlowControl)
+	r.writebuffer = r.writeSubnegotiation(r.writebuffer[:0], 5, cmd[:1])
+	if r.settings.FlowControl == base.SerialNoFlowControl { // set RTS to true by force
+		cmd[0] = 11
+		r.writebuffer = r.writeSubnegotiation(r.writebuffer, 5, cmd[:1])
+	}
 	r.isopen = true
 	return r.transport.Write(r.writebuffer)
 }
@@ -252,42 +270,42 @@ func (r *rfc2217Serial) processSubnegotiation(sub []byte) error {
 		if len(sub) != 2 {
 			return fmt.Errorf("invalid subnegotiation length")
 		}
-		switch sub[1] {
+		switch base.SerialDataBits(sub[1]) {
 		case base.Serial5DataBits, base.Serial6DataBits, base.Serial7DataBits, base.Serial8DataBits:
 		default:
 			return fmt.Errorf("unsupported data bits %02x", sub[1])
 		}
-		r.databits = int(sub[1])
+		r.databits = base.SerialDataBits(sub[1])
 		r.logf("reported data bits: %d", r.databits)
 	case 103: // set parity
 		if len(sub) != 2 {
 			return fmt.Errorf("invalid subnegotiation length")
 		}
-		switch sub[1] {
+		switch base.SerialParity(sub[1]) {
 		case base.SerialNoParity, base.SerialOddParity, base.SerialEvenParity, base.SerialMarkParity, base.SerialSpaceParity:
 		default:
 			return fmt.Errorf("unsupported parity %02x", sub[1])
 		}
-		r.parity = int(sub[1])
+		r.parity = base.SerialParity(sub[1])
 		r.logf("reported parity: %d", r.parity)
 	case 104: // set stop bits
 		if len(sub) != 2 {
 			return fmt.Errorf("invalid subnegotiation length")
 		}
-		switch sub[1] {
+		switch base.SerialStopBits(sub[1]) {
 		case base.SerialOneStopBit, base.SerialTwoStopBits, base.SerialOneAndHalfStopBits:
 		default:
 			return fmt.Errorf("unsupported stop bits %02x", sub[1])
 		}
-		r.stopbits = int(sub[1])
+		r.stopbits = base.SerialStopBits(sub[1])
 		r.logf("reported stop bits: %d", r.stopbits)
 	case 105: // set control
 		if len(sub) != 2 {
 			return fmt.Errorf("invalid subnegotiation length")
 		}
-		switch sub[1] {
+		switch base.SerialFlowControl(sub[1]) {
 		case base.SerialNoFlowControl, base.SerialSWFlowControl, base.SerialHWFlowControl, base.SerialDCDFlowControl, base.SerialDSRFlowControl:
-			r.control = int(sub[1])
+			r.control = base.SerialFlowControl(sub[1])
 			r.logf("reported control: %d", r.control)
 		default:
 			r.logf("unsupported control %02x", sub[1])
@@ -395,16 +413,16 @@ func (r *rfc2217Serial) SetDTR(dtr bool) error {
 }
 
 // SetFlowControl implements SerialStream.
-func (r *rfc2217Serial) SetFlowControl(flowControl int) error {
+func (r *rfc2217Serial) SetFlowControl(flowControl base.SerialFlowControl) error {
 	if !r.isopen {
 		return base.ErrNotOpened
 	}
 
-	switch flowControl {
-	case base.SerialNoFlowControl, base.SerialSWFlowControl, base.SerialHWFlowControl, base.SerialDCDFlowControl, base.SerialDSRFlowControl:
-	default:
-		return fmt.Errorf("unsupported flow control %d", flowControl)
+	if err := sanityControl(flowControl); err != nil {
+		return err
 	}
+
+	r.settings.FlowControl = flowControl
 
 	r.writebuffer = r.writeSubnegotiation(r.writebuffer[:0], 5, []byte{byte(flowControl)})
 	if flowControl == base.SerialNoFlowControl { // set RTS to true by force
@@ -413,13 +431,16 @@ func (r *rfc2217Serial) SetFlowControl(flowControl int) error {
 	return r.transport.Write(r.writebuffer)
 }
 
-// SetSpeed implements SerialStream.
-func (r *rfc2217Serial) SetSpeed(baudRate int, dataBits int, parity int, stopBits int) error {
-	var cmd [4]byte
-	if !r.isopen {
-		return base.ErrNotOpened
+func sanityControl(flowControl base.SerialFlowControl) error {
+	switch flowControl {
+	case base.SerialNoFlowControl, base.SerialSWFlowControl, base.SerialHWFlowControl, base.SerialDCDFlowControl, base.SerialDSRFlowControl:
+	default:
+		return fmt.Errorf("unsupported flow control %d", flowControl)
 	}
+	return nil
+}
 
+func sanitySpeed(baudRate int, dataBits base.SerialDataBits, parity base.SerialParity, stopBits base.SerialStopBits) error {
 	switch baudRate {
 	case 300, 600, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200, 128000, 256000:
 	default:
@@ -440,6 +461,25 @@ func (r *rfc2217Serial) SetSpeed(baudRate int, dataBits int, parity int, stopBit
 	default:
 		return fmt.Errorf("unsupported stop bits %d", stopBits)
 	}
+
+	return nil
+}
+
+// SetSpeed implements SerialStream.
+func (r *rfc2217Serial) SetSpeed(baudRate int, dataBits base.SerialDataBits, parity base.SerialParity, stopBits base.SerialStopBits) error {
+	var cmd [4]byte
+	if !r.isopen {
+		return base.ErrNotOpened
+	}
+
+	if err := sanitySpeed(baudRate, dataBits, parity, stopBits); err != nil {
+		return err
+	}
+
+	r.settings.BaudRate = baudRate
+	r.settings.DataBits = dataBits
+	r.settings.Parity = parity
+	r.settings.StopBits = stopBits
 
 	binary.BigEndian.PutUint32(cmd[:], uint32(baudRate))
 	r.writebuffer = r.writeSubnegotiation(r.writebuffer[:0], 1, cmd[:])
@@ -477,8 +517,9 @@ func (r *rfc2217Serial) Write(src []byte) error {
 	return r.transport.Write(r.writebuffer)
 }
 
-func NewRfc2217Serial(t base.Stream) base.SerialStream {
+func NewRfc2217Serial(settings base.SerialStreamSettings, t base.Stream) base.SerialStream {
 	ret := &rfc2217Serial{
+		settings:    settings,
 		transport:   t,
 		isopen:      false,
 		writebuffer: make([]byte, 0, 1024),
