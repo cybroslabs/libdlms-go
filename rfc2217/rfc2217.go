@@ -55,11 +55,7 @@ func (r *rfc2217Serial) logf(format string, v ...any) {
 
 // Close implements SerialStream.
 func (r *rfc2217Serial) Close() error {
-	if !r.isopen {
-		return nil
-	}
-	r.isopen = false
-	return r.transport.Close()
+	return nil // just do nothing, yes, bad semantic, should be renamed
 }
 
 // Disconnect implements SerialStream.
