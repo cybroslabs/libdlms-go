@@ -38,11 +38,6 @@ type rfc2217Serial struct {
 	settings base.SerialStreamSettings
 
 	// status variables
-	baudrate   int
-	databits   base.SerialDataBits
-	parity     base.SerialParity
-	stopbits   base.SerialStopBits
-	control    base.SerialFlowControl
 	linestate  byte
 	modemstate byte
 
@@ -117,11 +112,6 @@ func (r *rfc2217Serial) Open() error {
 		cmd[0] = 11
 		r.writebuffer = r.writeSubnegotiation(r.writebuffer, 5, cmd[:1])
 	}
-	r.baudrate = r.settings.BaudRate
-	r.databits = r.settings.DataBits
-	r.parity = r.settings.Parity
-	r.stopbits = r.settings.StopBits
-	r.control = r.settings.FlowControl
 	r.isopen = true
 	return r.transport.Write(r.writebuffer)
 }
@@ -269,8 +259,8 @@ func (r *rfc2217Serial) processSubnegotiation(sub []byte) error {
 		if len(sub) != 5 {
 			return fmt.Errorf("invalid subnegotiation length")
 		}
-		r.baudrate = int(binary.BigEndian.Uint32(sub[1:]))
-		r.logf("reported baudrate: %d", r.baudrate)
+		baudrate := int(binary.BigEndian.Uint32(sub[1:]))
+		r.logf("reported baudrate: %d", baudrate)
 	case 102: // set data bits
 		if len(sub) != 2 {
 			return fmt.Errorf("invalid subnegotiation length")
@@ -280,8 +270,8 @@ func (r *rfc2217Serial) processSubnegotiation(sub []byte) error {
 		default:
 			return fmt.Errorf("unsupported data bits %02x", sub[1])
 		}
-		r.databits = base.SerialDataBits(sub[1])
-		r.logf("reported data bits: %d", r.databits)
+		databits := base.SerialDataBits(sub[1])
+		r.logf("reported data bits: %v", databits)
 	case 103: // set parity
 		if len(sub) != 2 {
 			return fmt.Errorf("invalid subnegotiation length")
@@ -291,8 +281,8 @@ func (r *rfc2217Serial) processSubnegotiation(sub []byte) error {
 		default:
 			return fmt.Errorf("unsupported parity %02x", sub[1])
 		}
-		r.parity = base.SerialParity(sub[1])
-		r.logf("reported parity: %d", r.parity)
+		parity := base.SerialParity(sub[1])
+		r.logf("reported parity: %v", parity)
 	case 104: // set stop bits
 		if len(sub) != 2 {
 			return fmt.Errorf("invalid subnegotiation length")
@@ -302,16 +292,16 @@ func (r *rfc2217Serial) processSubnegotiation(sub []byte) error {
 		default:
 			return fmt.Errorf("unsupported stop bits %02x", sub[1])
 		}
-		r.stopbits = base.SerialStopBits(sub[1])
-		r.logf("reported stop bits: %d", r.stopbits)
+		stopbits := base.SerialStopBits(sub[1])
+		r.logf("reported stop bits: %v", stopbits)
 	case 105: // set control
 		if len(sub) != 2 {
 			return fmt.Errorf("invalid subnegotiation length")
 		}
 		switch base.SerialFlowControl(sub[1]) {
 		case base.SerialNoFlowControl, base.SerialSWFlowControl, base.SerialHWFlowControl, base.SerialDCDFlowControl, base.SerialDSRFlowControl:
-			r.control = base.SerialFlowControl(sub[1])
-			r.logf("reported control: %d", r.control)
+			control := base.SerialFlowControl(sub[1])
+			r.logf("reported control: %v", control)
 		default:
 			r.logf("unsupported control %02x", sub[1])
 		}
