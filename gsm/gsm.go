@@ -46,7 +46,7 @@ func DefaultSettings() GsmSettings {
 			{Command: "ATH", OkAnswerRex: _ok, BadAnswerRex: _err},
 			{Command: "ATI", OkAnswerRex: _ok, BadAnswerRex: _err},
 			{Command: "AT&F", OkAnswerRex: _ok, BadAnswerRex: _err},
-			{Command: "ATE", OkAnswerRex: _ok, BadAnswerRex: _err},
+			{Command: "ATE0", OkAnswerRex: _ok, BadAnswerRex: _err},
 		},
 		Escape:              "+++",
 		EscapePause:         1500 * time.Millisecond,
