@@ -49,12 +49,12 @@ type macpacket struct {
 }
 
 type Settings struct {
-	Logical   uint16
-	Physical  uint16
-	Client    byte
-	MaxRcv    uint
-	MaxSnd    uint
-	Negotiate bool
+	Logical       uint16
+	Physical      uint16
+	Client        byte
+	MaxRcv        uint
+	MaxSnd        uint
+	DontNegotiate bool
 }
 
 func New(transport base.Stream, settings *Settings) (base.Stream, error) {
@@ -144,16 +144,16 @@ func (w *maclayer) Open() error {
 	}
 	// snrm here, always negotiate for now
 	p := w.recvbuffer[:0]
-	if w.settings.Negotiate {
+	if w.settings.DontNegotiate {
+		w.settings.MaxRcv = 128
+		w.settings.MaxSnd = 128
+	} else {
 		if w.settings.MaxRcv > 128 || w.settings.MaxSnd > 128 { // longer snrm
 			p = append(p, 0x81, 0x80, 0x14, 0x05, 0x02, byte(w.settings.MaxSnd>>8), byte(w.settings.MaxSnd), 0x06, 0x02, byte(w.settings.MaxRcv>>8), byte(w.settings.MaxRcv))
 		} else {
 			p = append(p, 0x81, 0x80, 0x14, 0x05, 0x01, byte(w.settings.MaxSnd), 0x06, 0x01, byte(w.settings.MaxRcv))
 		}
 		p = append(p, 0x07, 0x04, 0x00, 0x00, 0x00, 0x01, 0x08, 0x04, 0x00, 0x00, 0x00, 0x01)
-	} else {
-		w.settings.MaxRcv = 128
-		w.settings.MaxSnd = 128
 	}
 
 	err := w.writepacket(macpacket{control: 0x83, info: p, segmented: false}, true)
