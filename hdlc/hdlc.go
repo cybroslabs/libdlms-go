@@ -26,11 +26,11 @@ type maclayer struct {
 	logger         *zap.SugaredLogger
 	recvbuffer     [maxLength]byte
 	sendbuffer     [maxLength]byte
+	lastsend       []byte
+	toreadout      bool
 	isopen         bool
 	controlS       byte
 	controlR       byte
-	tosend         int
-	state          int // 0 - start, 1 - writting, 2 - reading
 	packetsbuffer  [maxPackets]macpacket
 	toberead       []macpacket
 	tobereadpacket *macpacket
@@ -41,10 +41,9 @@ type maclayer struct {
 }
 
 type macpacket struct {
-	control      byte
-	info         []byte
-	segmented    bool
-	inlinelength int // ok, rely on default 0 value for this, in case some value, it is inlined already in sndbuffer, a bit hardcore
+	control   byte
+	info      []byte
+	segmented bool
 }
 
 type Settings struct {
@@ -55,6 +54,7 @@ type Settings struct {
 	MaxSnd          uint
 	DontNegotiate   bool
 	SnrmRetransmits int
+	Retransmits     int
 }
 
 func New(transport base.Stream, settings *Settings) (base.Stream, error) {
@@ -84,8 +84,7 @@ func New(transport base.Stream, settings *Settings) (base.Stream, error) {
 		isopen:         false,
 		controlS:       0,
 		controlR:       0,
-		tosend:         0,
-		state:          0,
+		lastsend:       nil,
 		toberead:       nil,
 		tobereadpacket: nil,
 		emptyframes:    0,
@@ -134,6 +133,10 @@ func (w *maclayer) Close() error {
 	return w.transport.Close()
 }
 
+func (w *maclayer) retransmit() error {
+	return w.transport.Write(w.lastsend)
+}
+
 func (w *maclayer) Open() error {
 	if w.isopen {
 		return nil
@@ -158,22 +161,30 @@ func (w *maclayer) Open() error {
 	}
 
 	var r []macpacket
+	err := w.writepacket(macpacket{control: 0x83, info: p, segmented: false}, true)
+	if err != nil {
+		return err
+	}
 	cnt := w.settings.SnrmRetransmits
 	for {
-		err := w.writepacket(macpacket{control: 0x83, info: p, segmented: false}, true)
-		if err != nil {
-			return err
-		}
 		// receive and parse snrm response
 		r, err = w.readpackets()
 		if err == nil {
 			break
 		}
-		if cnt <= 0 {
+		if errors.Is(err, base.ErrCommunicationTimeout) {
+			if cnt <= 0 {
+				return err
+			}
+			cnt--
+			w.logf("snrm retransmitting")
+		} else {
 			return err
 		}
-		cnt--
-		w.logf("snrm retransmitting")
+		err = w.retransmit() // screw write timeouts
+		if err != nil {
+			return err
+		}
 	}
 	if len(r) == 0 {
 		return fmt.Errorf("no packet received, EOF?")
@@ -185,7 +196,7 @@ func (w *maclayer) Open() error {
 	if r[0].control != 0x63 {
 		return fmt.Errorf("invalid snrm answer, expected UA, got %x", r[0].control)
 	}
-	err := w.parsesnrmua(r[0].info)
+	err = w.parsesnrmua(r[0].info)
 	if err != nil {
 		return err
 	}
@@ -293,15 +304,8 @@ func (w *maclayer) Read(p []byte) (n int, err error) {
 	if !w.isopen {
 		return 0, base.ErrNotOpened
 	}
-	if w.state == 0 {
-		return 0, io.EOF
-	}
 	if len(p) == 0 {
 		return 0, base.ErrNothingToRead
-	}
-	err = w.writeout()
-	if err != nil {
-		return 0, err
 	}
 	// check if there is something to readout
 	if w.tobereadpacket != nil { // something in last packet, readout that...
@@ -322,8 +326,8 @@ func (w *maclayer) Read(p []byte) (n int, err error) {
 					}
 					w.tobereadpacket = nil
 				} else {
-					w.state = 0
 					w.tobereadpacket = nil
+					w.toreadout = false // everything is read
 					return 0, io.EOF
 				}
 			} else {
@@ -339,9 +343,24 @@ func (w *maclayer) Read(p []byte) (n int, err error) {
 	}
 
 	for bcnt := maxRRframecycles; bcnt > 0; bcnt-- {
-		w.toberead, err = w.readpackets()
-		if err != nil {
-			return 0, err
+		cnt := w.settings.Retransmits
+		for {
+			w.toberead, err = w.readpackets()
+			if err == nil {
+				break
+			}
+			if errors.Is(err, base.ErrCommunicationTimeout) {
+				if cnt <= 0 {
+					return 0, err
+				}
+				cnt--
+			} else {
+				return 0, err
+			}
+			err = w.retransmit()
+			if err != nil {
+				return 0, err
+			}
 		}
 		w.tobereadpacket, err = w.getnextI()
 		if err != nil {
@@ -415,64 +434,55 @@ func (w *maclayer) Write(src []byte) error {
 	for len(src) > 0 {
 		l := len(src)
 		s := false
-		if w.tosend+l > int(w.settings.MaxSnd) {
-			l = int(w.settings.MaxSnd) - w.tosend
+		if l > int(w.settings.MaxSnd) {
+			l = int(w.settings.MaxSnd)
 			s = true
 		}
-		copy(w.sendbuffer[w.tosend+11:], src[:l])
-		w.tosend += l
-		if s { // send partial packet with segment bit
-			err = w.writepacket(macpacket{control: w.nextcontrol(), inlinelength: w.tosend, segmented: true}, true)
-			if err != nil {
-				return err
-			}
-			// expecting RR after final bit but during segmented transfer
-			err = w.processRRresp()
-			if err != nil {
-				return err
-			}
-			w.tosend = 0
-		}
-		src = src[l:]
-	}
-	return nil
-}
-
-func (w *maclayer) writeout() error {
-	if w.tosend > 0 { // last packet wasnt sent, so send it
-		err := w.writepacket(macpacket{control: w.nextcontrol(), inlinelength: w.tosend, segmented: false}, true)
+		err = w.writepacket(macpacket{control: w.nextcontrol(), info: src[:l], segmented: s}, true)
 		if err != nil {
 			return err
 		}
-		w.tosend = 0
+		if s { // send partial packet with segment bit
+			cnt := w.settings.Retransmits
+			for {
+				// expecting RR after final bit but during segmented transfer
+				err = w.processRRresp()
+				if err == nil {
+					break
+				}
+				if errors.Is(err, base.ErrCommunicationTimeout) {
+					if cnt <= 0 {
+						return err
+					}
+					cnt--
+				} else {
+					return err
+				}
+				err = w.retransmit()
+				if err != nil {
+					return err
+				}
+			}
+		}
+		src = src[l:]
 	}
-	if w.state != 2 {
-		w.toberead = nil
-		w.tobereadpacket = nil
-		w.emptyframes = maxEmptycycles
-		w.state = 2
-	}
+	w.toreadout = true
 	return nil
 }
 
 func (w *maclayer) readout() error {
-	switch w.state {
-	case 0: // at the very beginning, do nothing
-		w.tosend = 0
-		w.state = 1
-		return nil
-	case 1: // in the middle of writting, do nothing, so adfter calling from Close, this could lead to error, but i dont care
+	if !w.toreadout {
 		return nil
 	}
+	w.toreadout = false
+	rb := make([]byte, 2048)
 	// ok, using sndbuffer for receiving, because is not used during creating packet stream and i dont care about content
 	bcnt := maxReadoutBytes
 	for {
-		n, err := w.Read(w.sendbuffer[:])
+		n, err := w.Read(rb)
 		bcnt -= n
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				w.tosend = 0
-				w.state = 1
 				return nil
 			}
 			return err
@@ -812,14 +822,8 @@ func (w *maclayer) writepacket(packet macpacket, final bool) (err error) {
 		pck[offset] |= 0x10
 	}
 	offset++
-	ilen := packet.inlinelength
-	pcopy := false
-	if ilen == 0 {
-		ilen = len(packet.info) // suitable even for nil, so who cares
-		pcopy = true
-	}
-	if ilen > 0 {
-		leni := offset + 3 + ilen
+	if len(packet.info) > 0 {
+		leni := offset + 3 + len(packet.info)
 		if leni > 0x7ff {
 			return fmt.Errorf("too long packet to encode")
 		}
@@ -829,11 +833,9 @@ func (w *maclayer) writepacket(packet macpacket, final bool) (err error) {
 		}
 		pck[2] = byte(leni)
 		offset += 2
-		if pcopy {
-			copy(pck[offset:], packet.info)
-		}
-		offset += ilen
-		fcs := mac_crc16_w(pck[1:offset], offset-3-ilen)
+		copy(pck[offset:], packet.info)
+		offset += len(packet.info)
+		fcs := mac_crc16_w(pck[1:offset], offset-3-len(packet.info))
 		pck[offset] = byte(fcs)
 		offset++
 		pck[offset] = byte(fcs >> 8)
@@ -853,5 +855,6 @@ func (w *maclayer) writepacket(packet macpacket, final bool) (err error) {
 	pck[offset] = 0x7e
 	offset++
 
+	w.lastsend = pck[:offset]
 	return w.transport.Write(pck[:offset])
 }

@@ -1,9 +1,11 @@
 package tcp
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"os"
 	"strconv"
 	"time"
 
@@ -177,6 +179,9 @@ func (t *tcp) Read(p []byte) (int, error) {
 	if t.inerror != nil {
 		err := t.inerror
 		t.inerror = nil
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			return 0, base.ErrCommunicationTimeout
+		}
 		return 0, err
 	}
 
@@ -200,6 +205,9 @@ func (t *tcp) Read(p []byte) (int, error) {
 	if t.inerror != nil {
 		err := t.inerror
 		t.inerror = nil
+		if errors.Is(err, os.ErrDeadlineExceeded) {
+			return 0, base.ErrCommunicationTimeout
+		}
 		return 0, err
 	}
 	return 0, io.EOF // this is a bit questionable
