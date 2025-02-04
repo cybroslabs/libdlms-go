@@ -35,7 +35,6 @@ type maclayer struct {
 	toberead       []macpacket
 	tobereadpacket *macpacket
 	emptyframes    int
-	canwrite       bool // controling final/poll bit
 	addrlen        int
 
 	settings Settings
@@ -90,7 +89,6 @@ func New(transport base.Stream, settings *Settings) (base.Stream, error) {
 		toberead:       nil,
 		tobereadpacket: nil,
 		emptyframes:    0,
-		canwrite:       true,
 		settings:       *settings,
 	}
 	return w, nil
@@ -563,10 +561,6 @@ func mac_crc16_r(d []byte, ih int) (hcs uint16, fcs uint16) {
 
 // receive series of whole mac packets, no other way, from segmented tcp streaming, using rcvbuffer for first packet, extra memory for the rest
 func (w *maclayer) readpackets() ([]macpacket, error) {
-	if w.canwrite {
-		return nil, fmt.Errorf("cannot read packets, write is expected")
-	}
-
 	off := 0
 	first := true
 	final := false
@@ -584,7 +578,6 @@ func (w *maclayer) readpackets() ([]macpacket, error) {
 		w.packetsbuffer[off] = m
 		off++
 	}
-	w.canwrite = true
 	return w.packetsbuffer[:off], nil // everything is received, final is set, our turn now
 }
 
@@ -791,10 +784,6 @@ func mac_crc16_w(d []byte, ih int) uint16 {
 }
 
 func (w *maclayer) writepacket(packet macpacket, final bool) (err error) {
-	if !w.canwrite {
-		return fmt.Errorf("cannot write right now")
-	}
-
 	var pck []byte
 	switch w.addrlen {
 	case 1:
@@ -864,6 +853,5 @@ func (w *maclayer) writepacket(packet macpacket, final bool) (err error) {
 	pck[offset] = 0x7e
 	offset++
 
-	w.canwrite = !final // no windowing yet
 	return w.transport.Write(pck[:offset])
 }
