@@ -512,9 +512,9 @@ func (r *rfc2217Serial) Write(src []byte) error {
 	return r.transport.Write(r.writebuffer)
 }
 
-func NewRfc2217Serial(settings base.SerialStreamSettings, t base.Stream) base.SerialStream {
+func New(t base.Stream, settings *base.SerialStreamSettings) base.SerialStream {
 	ret := &rfc2217Serial{
-		settings:    settings,
+		settings:    *settings,
 		transport:   t,
 		isopen:      false,
 		writebuffer: make([]byte, 0, 1024),

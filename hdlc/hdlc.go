@@ -23,14 +23,9 @@ const (
 
 type maclayer struct {
 	transport      base.Stream
-	logical        uint16
-	physical       uint16
-	client         byte
 	logger         *zap.SugaredLogger
 	recvbuffer     [maxLength]byte
 	sendbuffer     [maxLength]byte
-	maxrcv         uint
-	maxsnd         uint
 	isopen         bool
 	controlS       byte
 	controlR       byte
@@ -41,6 +36,9 @@ type maclayer struct {
 	tobereadpacket *macpacket
 	emptyframes    int
 	canwrite       bool // controling final/poll bit
+	addrlen        int
+
+	settings Settings
 }
 
 type macpacket struct {
@@ -51,11 +49,12 @@ type macpacket struct {
 }
 
 type Settings struct {
-	Logical  uint16
-	Physical uint16
-	Client   byte
-	MaxRcv   uint
-	MaxSnd   uint
+	Logical   uint16
+	Physical  uint16
+	Client    byte
+	MaxRcv    uint
+	MaxSnd    uint
+	Negotiate bool
 }
 
 func New(transport base.Stream, settings *Settings) (base.Stream, error) {
@@ -81,12 +80,7 @@ func New(transport base.Stream, settings *Settings) (base.Stream, error) {
 
 	w := &maclayer{
 		transport:      transport,
-		logical:        settings.Logical,  // upper
-		physical:       settings.Physical, // lower
-		client:         settings.Client,
 		logger:         nil,
-		maxrcv:         settings.MaxRcv,
-		maxsnd:         settings.MaxSnd,
 		isopen:         false,
 		controlS:       0,
 		controlR:       0,
@@ -96,6 +90,7 @@ func New(transport base.Stream, settings *Settings) (base.Stream, error) {
 		tobereadpacket: nil,
 		emptyframes:    0,
 		canwrite:       true,
+		settings:       *settings,
 	}
 	return w, nil
 }
@@ -149,12 +144,17 @@ func (w *maclayer) Open() error {
 	}
 	// snrm here, always negotiate for now
 	p := w.recvbuffer[:0]
-	if w.maxrcv > 128 || w.maxsnd > 128 { // longer snrm
-		p = append(p, 0x81, 0x80, 0x14, 0x05, 0x02, byte(w.maxsnd>>8), byte(w.maxsnd), 0x06, 0x02, byte(w.maxrcv>>8), byte(w.maxrcv))
+	if w.settings.Negotiate {
+		if w.settings.MaxRcv > 128 || w.settings.MaxSnd > 128 { // longer snrm
+			p = append(p, 0x81, 0x80, 0x14, 0x05, 0x02, byte(w.settings.MaxSnd>>8), byte(w.settings.MaxSnd), 0x06, 0x02, byte(w.settings.MaxRcv>>8), byte(w.settings.MaxRcv))
+		} else {
+			p = append(p, 0x81, 0x80, 0x14, 0x05, 0x01, byte(w.settings.MaxSnd), 0x06, 0x01, byte(w.settings.MaxRcv))
+		}
+		p = append(p, 0x07, 0x04, 0x00, 0x00, 0x00, 0x01, 0x08, 0x04, 0x00, 0x00, 0x00, 0x01)
 	} else {
-		p = append(p, 0x81, 0x80, 0x14, 0x05, 0x01, byte(w.maxsnd), 0x06, 0x01, byte(w.maxrcv))
+		w.settings.MaxRcv = 128
+		w.settings.MaxSnd = 128
 	}
-	p = append(p, 0x07, 0x04, 0x00, 0x00, 0x00, 0x01, 0x08, 0x04, 0x00, 0x00, 0x00, 0x01)
 
 	err := w.writepacket(macpacket{control: 0x83, info: p, segmented: false}, true)
 	if err != nil {
@@ -179,8 +179,9 @@ func (w *maclayer) Open() error {
 	if err != nil {
 		return err
 	}
-	w.logf("snrm completed, having maxsnd: %v, maxrcv: %v", w.maxsnd, w.maxrcv)
+	w.logf("snrm completed, having maxsnd: %v, maxrcv: %v", w.settings.MaxSnd, w.settings.MaxRcv)
 
+	w.addrlen = w.getaddresslength()
 	w.isopen = true
 	return nil
 }
@@ -205,12 +206,12 @@ func (w *maclayer) parsesnrmua(ua []byte) error {
 		}
 		switch ua[i] {
 		case 5:
-			if t < w.maxrcv {
-				w.maxrcv = t
+			if t < w.settings.MaxRcv {
+				w.settings.MaxRcv = t
 			}
 		case 6:
-			if t < w.maxsnd {
-				w.maxsnd = t
+			if t < w.settings.MaxSnd {
+				w.settings.MaxSnd = t
 			}
 		case 7: // windows always 1 for now
 		case 8:
@@ -405,8 +406,8 @@ func (w *maclayer) Write(src []byte) error {
 	for len(src) > 0 {
 		l := len(src)
 		s := false
-		if w.tosend+l > int(w.maxsnd) {
-			l = int(w.maxsnd) - w.tosend
+		if w.tosend+l > int(w.settings.MaxSnd) {
+			l = int(w.settings.MaxSnd) - w.tosend
 			s = true
 		}
 		copy(w.sendbuffer[w.tosend+11:], src[:l])
@@ -682,7 +683,7 @@ func (w *maclayer) parsepacket(ori []byte) (pck macpacket, err error) {
 	if ori[2]&1 == 0 {
 		return pck, fmt.Errorf("invalid ending bit of client address")
 	}
-	if ori[2]>>1 != w.client {
+	if ori[2]>>1 != w.settings.Client {
 		return pck, fmt.Errorf("invalid client address")
 	}
 	offset := 0
@@ -708,10 +709,10 @@ func (w *maclayer) parsepacket(ori []byte) (pck macpacket, err error) {
 		offset = 4
 	}
 
-	if log != w.logical {
+	if log != w.settings.Logical {
 		return pck, fmt.Errorf("mismatch logical address")
 	}
-	if phy != w.physical {
+	if phy != w.settings.Physical {
 		return pck, fmt.Errorf("mismatch physical address")
 	}
 
@@ -751,11 +752,11 @@ func (w *maclayer) parsepacket(ori []byte) (pck macpacket, err error) {
 }
 
 func (w *maclayer) getaddresslength() int {
-	if w.logical <= 0x7f {
-		if w.physical == 0 {
+	if w.settings.Logical <= 0x7f {
+		if w.settings.Physical == 0 {
 			return 1
 		} else {
-			if w.physical <= 0x7f {
+			if w.settings.Physical <= 0x7f {
 				return 2
 			}
 		}
@@ -783,30 +784,28 @@ func (w *maclayer) writepacket(packet macpacket, final bool) (err error) {
 		return fmt.Errorf("cannot write right now")
 	}
 
-	addrlen := w.getaddresslength()
-
 	var pck []byte
-	switch addrlen {
+	switch w.addrlen {
 	case 1:
-		w.sendbuffer[6] = byte(w.logical<<1) | 1
+		w.sendbuffer[6] = byte(w.settings.Logical<<1) | 1
 		pck = w.sendbuffer[3:]
 	case 2:
-		w.sendbuffer[5] = byte(w.logical << 1)
-		w.sendbuffer[6] = byte(w.physical<<1) | 1
+		w.sendbuffer[5] = byte(w.settings.Logical << 1)
+		w.sendbuffer[6] = byte(w.settings.Physical<<1) | 1
 		pck = w.sendbuffer[2:]
 	case 4:
-		w.sendbuffer[3] = byte(w.logical>>7) << 1
-		w.sendbuffer[4] = byte(w.logical << 1)
-		w.sendbuffer[5] = byte(w.physical>>7) << 1
-		w.sendbuffer[6] = byte(w.physical<<1) | 1
+		w.sendbuffer[3] = byte(w.settings.Logical>>7) << 1
+		w.sendbuffer[4] = byte(w.settings.Logical << 1)
+		w.sendbuffer[5] = byte(w.settings.Physical>>7) << 1
+		w.sendbuffer[6] = byte(w.settings.Physical<<1) | 1
 		pck = w.sendbuffer[:]
 	default:
 		return fmt.Errorf("invalid address length, programatic error")
 	}
 
 	pck[0] = 0x7e
-	offset := 3 + addrlen // address + header + 0x7e
-	pck[offset] = byte(w.client<<1) | 1
+	offset := 3 + w.addrlen // address + header + 0x7e
+	pck[offset] = byte(w.settings.Client<<1) | 1
 	offset++
 	pck[offset] = packet.control
 	if final {
