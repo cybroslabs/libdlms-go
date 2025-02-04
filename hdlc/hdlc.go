@@ -26,6 +26,7 @@ type maclayer struct {
 	logger         *zap.SugaredLogger
 	recvbuffer     [maxLength]byte
 	sendbuffer     [maxLength]byte
+	writeoffset    int
 	lastsend       []byte
 	toreadout      bool
 	isopen         bool
@@ -88,6 +89,7 @@ func New(transport base.Stream, settings *Settings) (base.Stream, error) {
 		toberead:       nil,
 		tobereadpacket: nil,
 		emptyframes:    0,
+		writeoffset:    0,
 		settings:       *settings,
 	}
 	return w, nil
@@ -103,7 +105,11 @@ func (w *maclayer) Close() error {
 	if !w.isopen {
 		return nil
 	}
-	err := w.readout()
+	err := w.writeout()
+	if err != nil {
+		return err
+	}
+	err = w.readout()
 	if err != nil {
 		return err
 	}
@@ -113,9 +119,24 @@ func (w *maclayer) Close() error {
 		if err != nil {
 			return err
 		}
-		err = w.processRRresp()
-		if err != nil {
-			return err
+		cnt := w.settings.Retransmits
+		for {
+			err = w.processRRresp()
+			if err == nil {
+				break
+			}
+			if errors.Is(err, base.ErrCommunicationTimeout) {
+				if cnt <= 0 {
+					return err
+				}
+				cnt--
+			} else {
+				return err
+			}
+			err = w.retransmit()
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -124,7 +145,7 @@ func (w *maclayer) Close() error {
 	if err != nil {
 		return fmt.Errorf("unable to create disconnect packet")
 	}
-	_, err = w.readpackets() // just ignoring whatever returns
+	_, err = w.readpackets() // just ignoring whatever returns, damn retransmits even here? i guess no, in case of error, just raise some error and do reconnect after
 	if err != nil {
 		return err
 	}
@@ -307,6 +328,11 @@ func (w *maclayer) Read(p []byte) (n int, err error) {
 	if len(p) == 0 {
 		return 0, base.ErrNothingToRead
 	}
+	err = w.writeout()
+	if err != nil {
+		return 0, err
+	}
+
 	// check if there is something to readout
 	if w.tobereadpacket != nil { // something in last packet, readout that...
 		if len(w.tobereadpacket.info) == 0 { // readout everything, decide according to segmentation what to do next
@@ -418,6 +444,19 @@ func (w *maclayer) processRRresp() error {
 	return nil
 }
 
+func (w *maclayer) writeout() error {
+	if w.writeoffset == 0 {
+		return nil
+	}
+	err := w.writepacket(macpacket{control: w.nextcontrol(), segmented: false}, true)
+	if err != nil {
+		return nil
+	}
+	w.writeoffset = 0
+	w.toreadout = true
+	return nil
+}
+
 func (w *maclayer) Write(src []byte) error {
 	if !w.isopen {
 		return base.ErrNotOpened
@@ -434,15 +473,17 @@ func (w *maclayer) Write(src []byte) error {
 	for len(src) > 0 {
 		l := len(src)
 		s := false
-		if l > int(w.settings.MaxSnd) {
-			l = int(w.settings.MaxSnd)
+		if l > int(w.settings.MaxSnd)+w.writeoffset {
+			l = int(w.settings.MaxSnd) - w.writeoffset
 			s = true
 		}
-		err = w.writepacket(macpacket{control: w.nextcontrol(), info: src[:l], segmented: s}, true)
-		if err != nil {
-			return err
-		}
+		copy(w.sendbuffer[11+w.writeoffset:], src[:l]) // a bit hardcore, 11 is important constant ;)
+		w.writeoffset += l
 		if s { // send partial packet with segment bit
+			err = w.writepacket(macpacket{control: w.nextcontrol(), segmented: true}, true)
+			if err != nil {
+				return err
+			}
 			cnt := w.settings.Retransmits
 			for {
 				// expecting RR after final bit but during segmented transfer
@@ -466,7 +507,6 @@ func (w *maclayer) Write(src []byte) error {
 		}
 		src = src[l:]
 	}
-	w.toreadout = true
 	return nil
 }
 
@@ -822,7 +862,24 @@ func (w *maclayer) writepacket(packet macpacket, final bool) (err error) {
 		pck[offset] |= 0x10
 	}
 	offset++
-	if len(packet.info) > 0 {
+	if w.writeoffset > 0 { // inlined data
+		leni := offset + 3 + w.writeoffset
+		if leni > 0x7ff {
+			return fmt.Errorf("too long packet to encode")
+		}
+		pck[1] = 0xa0 | byte(leni>>8)
+		if packet.segmented {
+			pck[1] |= 8
+		}
+		pck[2] = byte(leni)
+		offset += 2 + w.writeoffset
+		fcs := mac_crc16_w(pck[1:offset], offset-3-w.writeoffset)
+		pck[offset] = byte(fcs)
+		offset++
+		pck[offset] = byte(fcs >> 8)
+		offset++
+		w.writeoffset = 0
+	} else if len(packet.info) > 0 {
 		leni := offset + 3 + len(packet.info)
 		if leni > 0x7ff {
 			return fmt.Errorf("too long packet to encode")
