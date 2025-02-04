@@ -49,12 +49,13 @@ type macpacket struct {
 }
 
 type Settings struct {
-	Logical       uint16
-	Physical      uint16
-	Client        byte
-	MaxRcv        uint
-	MaxSnd        uint
-	DontNegotiate bool
+	Logical         uint16
+	Physical        uint16
+	Client          byte
+	MaxRcv          uint
+	MaxSnd          uint
+	DontNegotiate   bool
+	SnrmRetransmits int
 }
 
 func New(transport base.Stream, settings *Settings) (base.Stream, error) {
@@ -158,14 +159,23 @@ func (w *maclayer) Open() error {
 		p = append(p, 0x07, 0x04, 0x00, 0x00, 0x00, 0x01, 0x08, 0x04, 0x00, 0x00, 0x00, 0x01)
 	}
 
-	err := w.writepacket(macpacket{control: 0x83, info: p, segmented: false}, true)
-	if err != nil {
-		return err
-	}
-	// receive and parse snrm response
-	r, err := w.readpackets()
-	if err != nil {
-		return err
+	var r []macpacket
+	cnt := w.settings.SnrmRetransmits
+	for {
+		err := w.writepacket(macpacket{control: 0x83, info: p, segmented: false}, true)
+		if err != nil {
+			return err
+		}
+		// receive and parse snrm response
+		r, err = w.readpackets()
+		if err == nil {
+			break
+		}
+		if cnt <= 0 {
+			return err
+		}
+		cnt--
+		w.logf("snrm retransmitting")
 	}
 	if len(r) == 0 {
 		return fmt.Errorf("no packet received, EOF?")
@@ -177,7 +187,7 @@ func (w *maclayer) Open() error {
 	if r[0].control != 0x63 {
 		return fmt.Errorf("invalid snrm answer, expected UA, got %x", r[0].control)
 	}
-	err = w.parsesnrmua(r[0].info)
+	err := w.parsesnrmua(r[0].info)
 	if err != nil {
 		return err
 	}
