@@ -452,7 +452,6 @@ func (w *maclayer) writeout() error {
 	if err != nil {
 		return nil
 	}
-	w.writeoffset = 0
 	w.toreadout = true
 	return nil
 }
