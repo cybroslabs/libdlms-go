@@ -142,6 +142,8 @@ func (w *maclayer) Open() error {
 	if err := w.transport.Open(); err != nil {
 		return err
 	}
+
+	w.addrlen = w.getaddresslength()
 	// snrm here, always negotiate for now
 	p := w.recvbuffer[:0]
 	if w.settings.DontNegotiate {
@@ -181,7 +183,6 @@ func (w *maclayer) Open() error {
 	}
 	w.logf("snrm completed, having maxsnd: %v, maxrcv: %v", w.settings.MaxSnd, w.settings.MaxRcv)
 
-	w.addrlen = w.getaddresslength()
 	w.isopen = true
 	return nil
 }
