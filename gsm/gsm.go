@@ -27,6 +27,7 @@ type GsmCommand struct {
 
 type GsmSettings struct {
 	DialCommand         string
+	HangUpCommand       string
 	InitCommands        []GsmCommand
 	Escape              string
 	EscapePause         time.Duration
@@ -41,7 +42,8 @@ type GsmSettings struct {
 
 func DefaultSettings() GsmSettings {
 	return GsmSettings{
-		DialCommand: "ATDT",
+		DialCommand:   "ATDT",
+		HangUpCommand: "ATH",
 		InitCommands: []GsmCommand{
 			{Command: "ATH", OkAnswerRex: _ok, BadAnswerRex: _err},
 			{Command: "ATI", OkAnswerRex: _ok, BadAnswerRex: _err},
@@ -118,7 +120,7 @@ func (g *gsm) hangup() error {
 		g.logf("error hanging up (but ignoring): %v", err)
 	}
 	for ii := 0; ii < 3; ii++ {
-		err = g.sendCommand(GsmCommand{Command: "ATH", OkAnswerRex: _ok, BadAnswerRex: _err})
+		err = g.sendCommand(GsmCommand{Command: g.settings.HangUpCommand, OkAnswerRex: _ok, BadAnswerRex: _err})
 		if err != nil {
 			g.logf("error hanging up (but ignoring): %v", err)
 		} else {
