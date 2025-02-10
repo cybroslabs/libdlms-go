@@ -216,7 +216,7 @@ func (d *dlmsal) createxdlms(dst *bytes.Buffer) {
 	encodetag2(dst, BERTypeContext|BERTypeConstructed|PduTypeUserInformation, 0x04, xdlms)
 }
 
-func (d *dlmsal) encodeaarq() (out []byte, err error) {
+func (d *dlmsal) encodeaarq() (out []byte, outnosec []byte, err error) {
 	var buf bytes.Buffer
 	var content bytes.Buffer
 	s := d.settings
@@ -227,11 +227,15 @@ func (d *dlmsal) encodeaarq() (out []byte, err error) {
 		encodetag(&content, BERTypeContext|PduTypeSenderAcseRequirements, []byte{0x07, 0x80})
 	}
 	putmechname(&content, s)
+	st := content.Len()
 	putsecvalues(&content, s)
+	en := content.Len()
 	d.createxdlms(&content)
 
 	encodetag(&buf, byte(TagAARQ), content.Bytes())
 	out = buf.Bytes()
+	outnosec = newcopy(out)
+	clear(outnosec[st:en])
 	return
 }
 

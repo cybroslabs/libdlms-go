@@ -276,6 +276,20 @@ func (d *dlmsal) smallreadout() ([]byte, error) {
 	}
 }
 
+func (d *dlmsal) logstate(st bool) bool {
+	switch d.settings.authentication {
+	case AuthenticationLow:
+		if st {
+			d.transport.SetLogger(d.logger)
+		} else {
+			d.logf("temporary stop logging due to packet with confidental content")
+			d.transport.SetLogger(nil)
+		}
+		return true
+	}
+	return false
+}
+
 func (d *dlmsal) Open() error { // login and shits
 	if d.isopen {
 		return nil
@@ -283,19 +297,28 @@ func (d *dlmsal) Open() error { // login and shits
 	if err := d.transport.Open(); err != nil {
 		return err
 	}
-
-	b, err := d.encodeaarq()
+	b, tl, err := d.encodeaarq()
 	if err != nil {
 		return err
 	}
+
+	if d.logstate(false) { // potencially not logging from all layer, not just that password, but nothing...
+		d.logf(base.LogHex("AARQ (sec values zeroed)", tl))
+	}
 	err = d.transport.Write(b)
 	if err != nil {
+		d.logstate(true)
 		return err
 	}
 	aare, err := d.smallreadout()
 	if err != nil {
+		d.logstate(true)
 		return fmt.Errorf("unable to receive snrm: %w", err)
 	}
+	if d.logstate(true) {
+		d.logf(base.LogHex("AARE", aare))
+	}
+
 	// parse aare
 	tag, _, data, err := decodetag(aare, &d.tmpbuffer)
 	if err != nil {
