@@ -102,12 +102,10 @@ func (t *tcp) SetMaxReceivedBytes(m int64) {
 
 func (t *tcp) SetTimeout(to time.Duration) {
 	t.timeout = to
-	t.setcommdeadline()
 }
 
 func (t *tcp) SetDeadline(d time.Time) {
 	t.deadline = d
-	t.setcommdeadline()
 }
 
 func (t *tcp) SetLogger(logger *zap.SugaredLogger) {
