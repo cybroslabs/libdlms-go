@@ -67,8 +67,13 @@ func newDataStream(src io.Reader, inmem bool, logger *zap.SugaredLogger) (DlmsDa
 }
 
 func (d *datastream) Rewind() error {
+	if d.inerror {
+		return fmt.Errorf("already in error state")
+	}
+
 	if d.inmemory {
 		d.mem.Rewind()
+		d.ineof = false
 		if len(d.stack) == 0 {
 			d.stack = append(d.stack, datastreamstate{items: 1, element: TagError})
 		} else {
