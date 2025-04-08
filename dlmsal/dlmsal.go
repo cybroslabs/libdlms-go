@@ -113,7 +113,6 @@ type DlmsSettings struct {
 	gcm                gcm.Gcm
 	systemtitle        []byte
 	framecounter       uint32
-	usededicatedkey    bool
 	dedgcm             gcm.Gcm
 	dedicatedkey       []byte
 	akcopy             []byte

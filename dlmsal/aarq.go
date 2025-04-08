@@ -185,7 +185,7 @@ func (d *dlmsal) createxdlms(dst *bytes.Buffer) {
 	s := d.settings
 	var xdlms []byte
 	var subxdlms []byte
-	if s.usededicatedkey {
+	if s.dedgcm != nil {
 		xdlms = make([]byte, 15+len(s.dedicatedkey))
 		xdlms[0] = 0x01
 		xdlms[1] = 0x01
