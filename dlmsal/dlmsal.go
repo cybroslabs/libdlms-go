@@ -115,17 +115,15 @@ type DlmsSettings struct {
 	framecounter       uint32
 	dedgcm             gcm.Gcm
 	dedicatedkey       []byte
-	akcopy             []byte
 }
 
-func (d *DlmsSettings) SetDedicatedKey(key []byte) (err error) {
+func (d *DlmsSettings) SetDedicatedKey(key []byte, g gcm.Gcm) {
 	if key == nil {
 		d.dedgcm = nil
 	} else {
-		d.dedgcm, err = gcm.NewGCM(key, d.akcopy)
+		d.dedgcm = g
 		d.dedicatedkey = newcopy(key) // regardless error
 	}
-	return
 }
 
 func NewSettingsWithLowAuthenticationSN(password string) (*DlmsSettings, error) {
@@ -169,16 +167,12 @@ func NewSettingsNoAuthenticationLN() (*DlmsSettings, error) {
 	}, nil
 }
 
-func NewSettingsWithGmacLN(systemtitle []byte, ek []byte, ak []byte, ctoshash []byte, fc uint32) (*DlmsSettings, error) {
+func NewSettingsWithGmacLN(systemtitle []byte, g gcm.Gcm, ctoshash []byte, fc uint32) (*DlmsSettings, error) {
 	if len(systemtitle) != 8 {
 		return nil, fmt.Errorf("systemtitle has to be 8 bytes long")
 	}
 	if len(ctoshash) == 0 {
 		return nil, fmt.Errorf("ctoshash is empty")
-	}
-	g, err := gcm.NewGCM(ek, ak)
-	if err != nil {
-		return nil, err
 	}
 	ret := DlmsSettings{
 		authentication:     AuthenticationHighGmac,
@@ -191,7 +185,6 @@ func NewSettingsWithGmacLN(systemtitle []byte, ek []byte, ak []byte, ctoshash []
 			ConformanceBlockGeneralProtection,
 		systemtitle:  newcopy(systemtitle),
 		gcm:          g,
-		akcopy:       newcopy(ak), // this is sad...
 		password:     newcopy(ctoshash),
 		framecounter: fc,
 		Security:     SecurityEncryption | SecurityAuthentication,

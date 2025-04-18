@@ -10,10 +10,6 @@ import (
 	"github.com/cybroslabs/libdlms-go/base"
 )
 
-type GcmDecryptorStream interface {
-	Read(p []byte) (n int, err error)
-}
-
 type gcmdecstream10 struct { // no tag/hash, no aad, decrypt only
 	master      *gcm
 	apdu        io.Reader
@@ -28,7 +24,7 @@ type gcmdecstream10 struct { // no tag/hash, no aad, decrypt only
 	ineof       bool
 }
 
-func newgcmdecstream10(master *gcm, sc byte, src io.Reader) GcmDecryptorStream {
+func newgcmdecstream10(master *gcm, sc byte, src io.Reader) io.Reader {
 	ret := gcmdecstream10{master: master, apdu: src, blockoffset: 0, blockread: 0, blockoffer: 0, ineof: false}
 	ret.J0 = master.tmp[:AES_BLOCK_SIZE] // yes, this is reusable hardcore
 	ret.S = master.tmp[AES_BLOCK_SIZE : AES_BLOCK_SIZE<<1]
@@ -140,7 +136,7 @@ type gcmdecstream20 struct { // no tag/hash, no aad, decrypt only
 	ineof       bool
 }
 
-func newgcmdecstream20(master *gcm, src io.Reader) GcmDecryptorStream {
+func newgcmdecstream20(master *gcm, src io.Reader) io.Reader {
 	ret := gcmdecstream20{master: master, apdu: src, blockoffset: 0, blockread: 0, ineof: false}
 	ret.J0 = master.tmp[:AES_BLOCK_SIZE] // yes, this is reusable hardcore
 	inc32(ret.J0)
@@ -198,7 +194,7 @@ type gcmdecstream30 struct { // no tag/hash, no aad, decrypt only
 	ineof       bool
 }
 
-func newgcmdecstream30(master *gcm, sc byte, src io.Reader) GcmDecryptorStream {
+func newgcmdecstream30(master *gcm, sc byte, src io.Reader) io.Reader {
 	ret := gcmdecstream30{master: master, apdu: src, blockoffset: 0, blockread: 0, cryptsize: 0, ineof: false}
 	ret.J0 = master.tmp[:AES_BLOCK_SIZE] // yes, this is reusable hardcore
 	inc32(ret.J0)

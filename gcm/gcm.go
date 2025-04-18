@@ -25,8 +25,8 @@ type Gcm interface { // add length to the streamer interface? add systitle to co
 	Decrypt(ret []byte, sc byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error)
 	// ret can be nil in case of not reused
 	Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error)
-	GetDecryptorStream(sc byte, fc uint32, systitle []byte, apdu io.Reader) (GcmDecryptorStream, error)
-	GetDecryptorStream2(scControl byte, scContent byte, fc uint32, systitle []byte, apdu io.Reader) (GcmDecryptorStream, error)
+	GetDecryptorStream(sc byte, fc uint32, systitle []byte, apdu io.Reader) (io.Reader, error)
+	GetDecryptorStream2(scControl byte, scContent byte, fc uint32, systitle []byte, apdu io.Reader) (io.Reader, error)
 }
 
 type gcm struct {
@@ -168,11 +168,11 @@ func (g *gcm) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, sy
 	return nil, fmt.Errorf("unsupported security control byte: %v", scControl)
 }
 
-func (g *gcm) GetDecryptorStream(sc byte, fc uint32, systitle []byte, apdu io.Reader) (GcmDecryptorStream, error) {
+func (g *gcm) GetDecryptorStream(sc byte, fc uint32, systitle []byte, apdu io.Reader) (io.Reader, error) {
 	return g.GetDecryptorStream2(sc, sc, fc, systitle, apdu)
 }
 
-func (g *gcm) GetDecryptorStream2(scControl byte, scContent byte, fc uint32, systitle []byte, apdu io.Reader) (GcmDecryptorStream, error) {
+func (g *gcm) GetDecryptorStream2(scControl byte, scContent byte, fc uint32, systitle []byte, apdu io.Reader) (io.Reader, error) {
 	if len(systitle) != 8 {
 		return nil, fmt.Errorf("systitle has to be 8 bytes long")
 	}
