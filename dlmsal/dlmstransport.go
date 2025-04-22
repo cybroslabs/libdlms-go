@@ -99,7 +99,7 @@ func (d *dlmsal) recvcipheredpdu(rtag CosemTag, ded bool) (tag CosemTag, str io.
 		return tag, nil, fmt.Errorf("unable to read SC byte and frame counter")
 	}
 	fc := binary.BigEndian.Uint32(d.tmpbuffer[1:])
-	str, err = gcm.GetDecryptorStream(d.tmpbuffer[0], fc, d.aareres.SystemTitle, io.LimitReader(d.transport, int64(l)))
+	str, err = gcm.GetDecryptorStream(d.tmpbuffer[0], fc, d.aareres.systemTitle, io.LimitReader(d.transport, int64(l)))
 	if err != nil {
 		return
 	}

@@ -83,7 +83,7 @@ type dlmsal struct {
 	logger         *zap.SugaredLogger
 	settings       *DlmsSettings
 	isopen         bool
-	aareres        AAResponse
+	aareres        aaResponse
 	maxPduSendSize int
 
 	// things for communications/data parsing
@@ -102,10 +102,11 @@ type DlmsSettings struct {
 	EmptyRLRQ         bool
 	Security          DlmsSecurity
 	StoC              []byte
-	CtoS              []byte
 	SourceDiagnostic  SourceDiagnostic
+	ServerSystemTitle []byte
 
 	// private part
+	ctos               []byte
 	invokebyte         byte
 	authentication     Authentication
 	applicationContext ApplicationContext
@@ -189,7 +190,7 @@ func NewSettingsWithGmacLN(systemtitle []byte, g gcm.Gcm, ctoshash []byte, fc ui
 		framecounter: fc,
 		Security:     SecurityEncryption | SecurityAuthentication,
 	}
-	ret.CtoS = ret.password // just reference
+	ret.ctos = ret.password // just reference
 	return &ret, nil
 }
 
@@ -326,13 +327,16 @@ func (d *dlmsal) Open() error { // login and shits
 	for _, dt := range tags {
 		switch dt.tag {
 		case BERTypeContext | BERTypeConstructed | PduTypeApplicationContextName: // 0xa1
-			d.aareres.ApplicationContextName, err = parseApplicationContextName(&dt)
+			d.aareres.applicationContextName, err = parseApplicationContextName(&dt)
 		case BERTypeContext | BERTypeConstructed | PduTypeCalledAPTitle: // 0xa2
-			d.aareres.AssociationResult, err = parseAssociationResult(&dt)
+			d.aareres.associationResult, err = parseAssociationResult(&dt)
 		case BERTypeContext | BERTypeConstructed | PduTypeCalledAEQualifier: // 0xa3
-			d.aareres.SourceDiagnostic, err = parseAssociateSourceDiagnostic(&dt)
+			d.aareres.sourceDiagnostic, err = parseAssociateSourceDiagnostic(&dt)
 		case BERTypeContext | BERTypeConstructed | PduTypeCalledAPInvocationID: // 0xa4
-			d.aareres.SystemTitle, err = parseAPTitle(&dt, &d.tmpbuffer)
+			d.aareres.systemTitle, err = parseAPTitle(&dt, &d.tmpbuffer)
+			if err == nil {
+				d.settings.ServerSystemTitle = d.aareres.systemTitle // no copy here, just reference, a bit hacky as gcm itself doesnt have any extended interface for handling this
+			}
 		case BERTypeContext | BERTypeConstructed | PduTypeSenderAcseRequirements: // 0xaa
 			d.settings.StoC, err = parseSenderAcseRequirements(&dt, &d.tmpbuffer)
 		case BERTypeContext | BERTypeConstructed | PduTypeUserInformation: // 0xbe
@@ -349,18 +353,18 @@ func (d *dlmsal) Open() error { // login and shits
 	if d.aareres.confirmedServiceError != nil {
 		return fmt.Errorf("confirmed service error: %v", d.aareres.confirmedServiceError.ConfirmedServiceError)
 	}
-	if d.aareres.ApplicationContextName != d.settings.applicationContext {
-		return fmt.Errorf("application contextes differ: %v != %v", d.aareres.ApplicationContextName, d.settings.applicationContext)
+	if d.aareres.applicationContextName != d.settings.applicationContext {
+		return fmt.Errorf("application contextes differ: %v != %v", d.aareres.applicationContextName, d.settings.applicationContext)
 	}
-	if d.aareres.AssociationResult != AssociationResultAccepted {
-		return fmt.Errorf("login failed: %v", d.aareres.AssociationResult)
+	if d.aareres.associationResult != AssociationResultAccepted {
+		return fmt.Errorf("login failed: %v", d.aareres.associationResult)
 	}
-	d.settings.SourceDiagnostic = d.aareres.SourceDiagnostic // duplicit information, damn it, maybe make a bit bigger settings, or maybe status?
-	switch d.aareres.SourceDiagnostic {
+	d.settings.SourceDiagnostic = d.aareres.sourceDiagnostic // duplicit information, damn it, maybe make a bit bigger settings, or maybe status?
+	switch d.aareres.sourceDiagnostic {
 	case SourceDiagnosticNone:
 	case SourceDiagnosticAuthenticationRequired:
 	default:
-		return fmt.Errorf("invalid source diagnostic: %v", d.aareres.SourceDiagnostic)
+		return fmt.Errorf("invalid source diagnostic: %v", d.aareres.sourceDiagnostic)
 	}
 	// store aare maybe into context, max pdu info and so on
 	if d.aareres.initiateResponse == nil {

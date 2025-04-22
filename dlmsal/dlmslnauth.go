@@ -11,8 +11,8 @@ import (
 func (d *dlmsal) LNAuthentication(checkresp bool) error {
 	s := d.settings
 
-	if d.aareres.AssociationResult != AssociationResultAccepted { // sadly this zero is also default value
-		return fmt.Errorf("association result not accepted: %v", d.aareres.AssociationResult)
+	if d.aareres.associationResult != AssociationResultAccepted { // sadly this zero is also default value
+		return fmt.Errorf("association result not accepted: %v", d.aareres.associationResult)
 	}
 
 	switch s.SourceDiagnostic {
@@ -73,7 +73,7 @@ func (d *dlmsal) LNAuthentication(checkresp bool) error {
 	if len(aresp) != 5+gcm.GCM_TAG_LENGTH || aresp[0] != byte(SecurityAuthentication) {
 		return fmt.Errorf("invalid stoc hash response")
 	}
-	r, err := s.gcm.Encrypt(d.cryptbuffer, aresp[0], binary.BigEndian.Uint32(aresp[1:]), d.aareres.SystemTitle, s.CtoS)
+	r, err := s.gcm.Encrypt(d.cryptbuffer, aresp[0], binary.BigEndian.Uint32(aresp[1:]), d.aareres.systemTitle, s.ctos)
 	if err != nil {
 		return err
 	}

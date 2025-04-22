@@ -50,12 +50,12 @@ func (d *dlmsal) decryptpacket(apdu []byte, ded bool) (ret []byte, err error) { 
 		if s.dedgcm == nil {
 			return nil, fmt.Errorf("no dedicated gcm set for ciphering")
 		}
-		d.cryptbuffer, err = s.dedgcm.Decrypt(d.cryptbuffer, apdu[0], fc, d.aareres.SystemTitle, apdu[5:])
+		d.cryptbuffer, err = s.dedgcm.Decrypt(d.cryptbuffer, apdu[0], fc, d.aareres.systemTitle, apdu[5:])
 	} else {
 		if s.gcm == nil {
 			return nil, fmt.Errorf("no global gcm set for ciphering")
 		}
-		d.cryptbuffer, err = s.gcm.Decrypt(d.cryptbuffer, apdu[0], fc, d.aareres.SystemTitle, apdu[5:]) // set cryptbuffer just to be reused
+		d.cryptbuffer, err = s.gcm.Decrypt(d.cryptbuffer, apdu[0], fc, d.aareres.systemTitle, apdu[5:]) // set cryptbuffer just to be reused
 	}
 	if err != nil {
 		return nil, err

@@ -142,11 +142,11 @@ type aaretag struct {
 	data []byte
 }
 
-type AAResponse struct {
-	ApplicationContextName ApplicationContext
-	AssociationResult      AssociationResult
-	SourceDiagnostic       SourceDiagnostic
-	SystemTitle            []byte
+type aaResponse struct {
+	applicationContextName ApplicationContext
+	associationResult      AssociationResult
+	sourceDiagnostic       SourceDiagnostic
+	systemTitle            []byte
 	initiateResponse       *initiateResponse
 	confirmedServiceError  *confirmedServiceError
 }
