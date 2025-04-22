@@ -25,7 +25,8 @@ type GcmKMSSettings struct {
 	AccessLevel   string
 	SerialNumber  string
 	DriverId      string
-	ClientTitle   []byte // no ctos yet, suit0 mere encrypt that without additional secret, so not needed
+	ClientTitle   []byte
+	CtoS          []byte
 	Context       context.Context
 }
 
@@ -36,6 +37,7 @@ type gcmkms struct {
 	serialNumber  string
 	driverId      string
 	clientTitle   []byte
+	ctos          []byte
 	initdone      bool
 	setupdone     bool
 	ctx           context.Context
@@ -91,7 +93,7 @@ func (g *gcmkms) init() (err error) {
 			SerialNumber: &g.serialNumber,
 			AccessLevel:  &g.accessLevel,
 			SystemTitleC: g.clientTitle,
-			CToS:         nil, // TODO: for other crypto types, we need to implement this
+			CToS:         g.ctos,
 		}.Build(),
 	}.Build())
 	if err != nil {
@@ -230,5 +232,6 @@ func NewGCMKMS(settings *GcmKMSSettings) (GcmKMS, error) { // so only suite 0 ri
 		ctx:           settings.Context,
 	}
 	ret.clientTitle = append(ret.clientTitle, settings.ClientTitle...) // get copy
+	ret.ctos = append(ret.ctos, settings.CtoS...)                      // get copy
 	return ret, nil
 }

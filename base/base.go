@@ -8,7 +8,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type Stream interface { // todo, make it a bit more streamable, so receive wanted amount of bytes with guaranted amount or timeout or error...
+type Stream interface {
 	Close() error
 	Open() error
 	Disconnect() error // hard end of connection without solving any unassociation or so
