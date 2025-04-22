@@ -181,7 +181,7 @@ func putsystitle(dst *bytes.Buffer, settings *DlmsSettings) {
 	}
 }
 
-func (d *dlmsal) createxdlms(dst *bytes.Buffer) {
+func (d *dlmsal) createxdlms(dst *bytes.Buffer) (err error) {
 	s := d.settings
 	var xdlms []byte
 	var subxdlms []byte
@@ -211,9 +211,10 @@ func (d *dlmsal) createxdlms(dst *bytes.Buffer) {
 
 	switch s.authentication {
 	case AuthenticationHighGmac: // encrypt this
-		xdlms = d.encryptpacket(byte(TagGloInitiateRequest), xdlms, false)
+		xdlms, err = d.encryptpacket(byte(TagGloInitiateRequest), xdlms, false)
 	}
 	encodetag2(dst, BERTypeContext|BERTypeConstructed|PduTypeUserInformation, 0x04, xdlms)
+	return
 }
 
 func (d *dlmsal) encodeaarq() (out []byte, outnosec []byte, err error) {
@@ -230,7 +231,10 @@ func (d *dlmsal) encodeaarq() (out []byte, outnosec []byte, err error) {
 	st := content.Len()
 	putsecvalues(&content, s)
 	en := content.Len()
-	d.createxdlms(&content)
+	err = d.createxdlms(&content)
+	if err != nil {
+		return
+	}
 
 	encodetag(&buf, byte(TagAARQ), content.Bytes())
 	out = buf.Bytes()

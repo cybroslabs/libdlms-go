@@ -6,7 +6,7 @@ import (
 )
 
 // tag is common byte in this case, could be also 9 for octetstring and so on, it encodes also length
-func (d *dlmsal) encryptpacket(tag byte, apdu []byte, ded bool) []byte {
+func (d *dlmsal) encryptpacket(tag byte, apdu []byte, ded bool) ([]byte, error) {
 	s := d.settings
 	// lets panic in case of nil gcm -> program fault shouldnt happen at all
 	wl, _ := s.gcm.GetEncryptLength(byte(s.Security), apdu)
@@ -30,13 +30,14 @@ func (d *dlmsal) encryptpacket(tag byte, apdu []byte, ded bool) []byte {
 	off++
 
 	// in this state, encrypt cant remake input reusable buffer
+	var err error
 	if ded {
-		_, _ = s.dedgcm.Encrypt(d.cryptbuffer[off:], byte(s.Security), s.framecounter, s.systemtitle, apdu) // this is weird and needs to be tested well
+		_, err = s.dedgcm.Encrypt(d.cryptbuffer[off:], byte(s.Security), s.framecounter, s.systemtitle, apdu) // this is weird and needs to be tested well
 	} else {
-		_, _ = s.gcm.Encrypt(d.cryptbuffer[off:], byte(s.Security), s.framecounter, s.systemtitle, apdu)
+		_, err = s.gcm.Encrypt(d.cryptbuffer[off:], byte(s.Security), s.framecounter, s.systemtitle, apdu)
 	}
 	s.framecounter++
-	return d.cryptbuffer[:off+wl]
+	return d.cryptbuffer[:off+wl], err
 }
 
 func (d *dlmsal) decryptpacket(apdu []byte, ded bool) (ret []byte, err error) { // not checking expected fc, just receive everything

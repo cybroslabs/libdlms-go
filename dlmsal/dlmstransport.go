@@ -31,7 +31,7 @@ func (d *dlmsal) sendpdu() (tag CosemTag, str io.Reader, err error) {
 		default:
 			return tag, nil, fmt.Errorf("unsupported tag %v", b[0])
 		}
-		b = d.encryptpacket(byte(tag), b, true)
+		b, err = d.encryptpacket(byte(tag), b, true)
 	} else if s.gcm != nil {
 		switch CosemTag(b[0]) {
 		case TagGetRequest:
@@ -47,7 +47,10 @@ func (d *dlmsal) sendpdu() (tag CosemTag, str io.Reader, err error) {
 		default:
 			return tag, nil, fmt.Errorf("unsupported tag %v", b[0])
 		}
-		b = d.encryptpacket(byte(tag), b, false)
+		b, err = d.encryptpacket(byte(tag), b, false)
+	}
+	if err != nil {
+		return
 	}
 
 	if len(b) > d.maxPduSendSize && d.maxPduSendSize != 0 {

@@ -55,7 +55,7 @@ func (ln *dlmsalaction) action(item DlmsLNRequestItem) (data *DlmsData, err erro
 	// send itself, that could be fun, do that in one step for now
 	tag, str, err := master.sendpdu()
 	if err != nil {
-		return data, err
+		return
 	}
 	ln.transport = str
 

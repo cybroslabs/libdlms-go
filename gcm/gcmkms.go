@@ -133,13 +133,23 @@ func (g *gcmkms) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32,
 		return nil, err
 	}
 
-	return g.sendcmd(crypto.DlmsIn_builder{
+	b, err := g.sendcmd(crypto.DlmsIn_builder{
 		Decrypt: crypto.DlmsDecrypt_builder{
 			FrameCounter:    &fc,
 			SecurityControl: ptr.To(uint32(scControl)),
 			Data:            apdu,
 		}.Build(),
 	}.Build())
+	if err != nil {
+		return nil, err
+	}
+	// pussyble data copy here
+	if ret != nil && cap(ret) >= len(b) {
+		ret = ret[:len(b)]
+		copy(ret, b)
+		return ret, nil
+	}
+	return b, nil
 }
 
 // Encrypt2 implements Gcm.
@@ -153,13 +163,22 @@ func (g *gcmkms) Encrypt2(ret []byte, scControl byte, scContent byte, fc uint32,
 		return nil, err
 	}
 
-	return g.sendcmd(crypto.DlmsIn_builder{
+	b, err := g.sendcmd(crypto.DlmsIn_builder{
 		Encrypt: crypto.DlmsEncrypt_builder{
 			FrameCounter:    &fc,
 			SecurityControl: ptr.To(uint32(scControl)),
 			Data:            apdu,
 		}.Build(),
 	}.Build())
+	if err != nil {
+		return nil, err
+	}
+	if ret != nil && cap(ret) >= len(b) {
+		ret = ret[:len(b)]
+		copy(ret, b)
+		return ret, nil
+	}
+	return b, nil
 }
 
 // GetDecryptorStream implements Gcm.
