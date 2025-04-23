@@ -136,6 +136,7 @@ func (g *gcmkms) Hash(dir GcmDirection, sc byte, fc uint32) ([]byte, error) {
 	return g.sendcmd(crypto.DlmsIn_builder{
 		Hash: crypto.DlmsHash_builder{
 			Direction:       ptr.To(d),
+			Mode:            ptr.To(crypto.Hash_HASH_GMAC),
 			FrameCounter:    &fc,
 			SecurityControl: ptr.To(uint32(sc)),
 		}.Build(),
