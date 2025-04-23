@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 	"unicode/utf8"
+
+	"github.com/cybroslabs/libdlms-go/base"
 )
 
 type dataTag uint16
@@ -49,19 +51,19 @@ type DlmsData struct {
 	Tag   dataTag
 }
 
-func NewDlmsDataError(err DlmsResultTag) DlmsData {
+func NewDlmsDataError(err base.DlmsResultTag) DlmsData {
 	return DlmsData{Tag: TagError, Value: NewDlmsError(err)}
 }
 
 type DlmsError struct {
-	Result DlmsResultTag
+	Result base.DlmsResultTag
 }
 
 func (e *DlmsError) Error() string {
 	return fmt.Sprintf("dlms error: %s", e.Result)
 }
 
-func NewDlmsError(result DlmsResultTag) error {
+func NewDlmsError(result base.DlmsResultTag) error {
 	return &DlmsError{Result: result}
 }
 

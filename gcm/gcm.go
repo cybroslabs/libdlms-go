@@ -15,18 +15,27 @@ const (
 	GCM_TAG_LENGTH     = 12
 )
 
+type GcmDirection byte
+
+const (
+	DirectionClientToServer = 0
+	DirectionServerToClient = 1
+)
+
 type Gcm interface { // add length to the streamer interface? add systitle to constructor? not to copy it every damn time
+	Setup(systemtitleS []byte, stoc []byte) error
+	Hash(dir GcmDirection, sc byte, fc uint32) ([]byte, error)
 	GetEncryptLength(scControl byte, apdu []byte) (int, error)
 	// ret can be nil in case of not reused, ret and apdu can overlap, but exactly
-	Encrypt(ret []byte, sc byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error)
+	Encrypt(ret []byte, sc byte, fc uint32, apdu []byte) ([]byte, error)
 	// ret can be nil in case of not reused
-	Encrypt2(ret []byte, scControl byte, scContent byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error)
+	Encrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error)
 	// ret can be nil in case of not reused
-	Decrypt(ret []byte, sc byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error)
+	Decrypt(ret []byte, sc byte, fc uint32, apdu []byte) ([]byte, error)
 	// ret can be nil in case of not reused
-	Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error)
-	GetDecryptorStream(sc byte, fc uint32, systitle []byte, apdu io.Reader) (io.Reader, error)
-	GetDecryptorStream2(scControl byte, scContent byte, fc uint32, systitle []byte, apdu io.Reader) (io.Reader, error)
+	Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error)
+	GetDecryptorStream(sc byte, fc uint32, apdu io.Reader) (io.Reader, error)
+	GetDecryptorStream2(scControl byte, scContent byte, fc uint32, apdu io.Reader) (io.Reader, error)
 }
 
 type gcm struct {
@@ -37,12 +46,17 @@ type gcm struct {
 	aes    cipher.Block
 	aad    []byte
 	aadbuf [1 + 32]byte
+
+	systemtitleC []byte
+	systemtitleS []byte
+	stoc         []byte
+	ctos         []byte
 }
 
 // no constant arrays in go, but these numbers are black magic
 var last4 = [...]uint64{0x0000, 0x1c20, 0x3840, 0x2460, 0x7080, 0x6ca0, 0x48c0, 0x54e0, 0xe100, 0xfd20, 0xd940, 0xc560, 0x9180, 0x8da0, 0xa9c0, 0xb5e0}
 
-func NewGCM(ek []byte, ak []byte) (Gcm, error) {
+func NewGCM(ek []byte, ak []byte, systemtitlec []byte, ctos []byte) (Gcm, error) {
 	if len(ek) != 16 && len(ek) != 24 && len(ek) != 32 {
 		return nil, fmt.Errorf("EK has to be 16, 24 or 32 bytes long")
 	}
@@ -53,9 +67,14 @@ func NewGCM(ek []byte, ak []byte) (Gcm, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(systemtitlec) != 8 {
+		return nil, fmt.Errorf("systitle has to be 8 bytes long")
+	}
 	g := gcm{
 		aes: aa,
 	}
+	g.systemtitleC = append([]byte{}, systemtitlec...)
+	g.ctos = append([]byte{}, ctos...)
 	copy(g.aadbuf[1:], ak)
 	g.aad = g.aadbuf[:1+len(ak)]
 	g.ak = g.aadbuf[1 : 1+len(ak)]
@@ -92,19 +111,50 @@ func (g *gcm) make_tables() {
 	}
 }
 
-func (g *gcm) Decrypt(ret []byte, sc byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error) {
-	return g.Decrypt2(ret, sc, sc, fc, systitle, apdu)
+func (g *gcm) Setup(systemtitleS []byte, stoc []byte) error {
+	if len(systemtitleS) != 8 {
+		return fmt.Errorf("systitle has to be 8 bytes long")
+	}
+	g.systemtitleS = append([]byte{}, systemtitleS...)
+	g.stoc = append([]byte{}, stoc...)
+	return nil
 }
 
-func (g *gcm) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error) {
-	if len(systitle) != 8 {
-		return nil, fmt.Errorf("systitle has to be 8 bytes long")
+func (g *gcm) Hash(dir GcmDirection, sc byte, fc uint32) ([]byte, error) {
+	switch dir {
+	case DirectionClientToServer:
+		e, err := g.encryptinternal(nil, sc, sc, fc, g.systemtitleC, g.stoc)
+		if err != nil {
+			return nil, err
+		}
+		if len(e) < GCM_TAG_LENGTH { // definitely shouldnt happen
+			return nil, fmt.Errorf("encrypted data too short")
+		}
+		return e[len(e)-GCM_TAG_LENGTH:], nil
+	case DirectionServerToClient:
+		e, err := g.encryptinternal(nil, sc, sc, fc, g.systemtitleS, g.ctos)
+		if err != nil {
+			return nil, err
+		}
+		if len(e) < GCM_TAG_LENGTH { // definitely shouldnt happen
+			return nil, fmt.Errorf("encrypted data too short")
+		}
+		return e[len(e)-GCM_TAG_LENGTH:], nil
+	default:
+		return nil, fmt.Errorf("invalid direction")
 	}
+}
+
+func (g *gcm) Decrypt(ret []byte, sc byte, fc uint32, apdu []byte) ([]byte, error) {
+	return g.Decrypt2(ret, sc, sc, fc, apdu)
+}
+
+func (g *gcm) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error) {
 	if apdu == nil {
 		return nil, fmt.Errorf("apdu is nil")
 	}
 	iv := g.tmp[:AES_BLOCK_SIZE] // a bit hardcore
-	copy(iv, systitle)
+	copy(iv, g.systemtitleS)
 	iv[8] = byte(fc >> 24)
 	iv[9] = byte(fc >> 16)
 	iv[10] = byte(fc >> 8)
@@ -168,19 +218,16 @@ func (g *gcm) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, sy
 	return nil, fmt.Errorf("unsupported security control byte: %v", scControl)
 }
 
-func (g *gcm) GetDecryptorStream(sc byte, fc uint32, systitle []byte, apdu io.Reader) (io.Reader, error) {
-	return g.GetDecryptorStream2(sc, sc, fc, systitle, apdu)
+func (g *gcm) GetDecryptorStream(sc byte, fc uint32, apdu io.Reader) (io.Reader, error) {
+	return g.GetDecryptorStream2(sc, sc, fc, apdu)
 }
 
-func (g *gcm) GetDecryptorStream2(scControl byte, scContent byte, fc uint32, systitle []byte, apdu io.Reader) (io.Reader, error) {
-	if len(systitle) != 8 {
-		return nil, fmt.Errorf("systitle has to be 8 bytes long")
-	}
+func (g *gcm) GetDecryptorStream2(scControl byte, scContent byte, fc uint32, apdu io.Reader) (io.Reader, error) {
 	if apdu == nil {
 		return nil, fmt.Errorf("apdu is nil")
 	}
 	iv := g.tmp[:AES_BLOCK_SIZE] // a bit hardcore
-	copy(iv, systitle)
+	copy(iv, g.systemtitleS)
 	iv[8] = byte(fc >> 24)
 	iv[9] = byte(fc >> 16)
 	iv[10] = byte(fc >> 8)
@@ -201,19 +248,20 @@ func (g *gcm) GetDecryptorStream2(scControl byte, scContent byte, fc uint32, sys
 	return nil, fmt.Errorf("unsupported security control byte: %v", scControl)
 }
 
-func (g *gcm) Encrypt(ret []byte, sc byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error) {
-	return g.Encrypt2(ret, sc, sc, fc, systitle, apdu)
+func (g *gcm) Encrypt(ret []byte, sc byte, fc uint32, apdu []byte) ([]byte, error) {
+	return g.encryptinternal(ret, sc, sc, fc, g.systemtitleC, apdu)
 }
 
-func (g *gcm) Encrypt2(ret []byte, scControl byte, scContent byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error) {
-	if len(systitle) != 8 {
-		return nil, fmt.Errorf("systitle has to be 8 bytes long")
-	}
+func (g *gcm) Encrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error) {
+	return g.encryptinternal(ret, scControl, scContent, fc, g.systemtitleC, apdu)
+}
+
+func (g *gcm) encryptinternal(ret []byte, scControl byte, scContent byte, fc uint32, systemtitle []byte, apdu []byte) ([]byte, error) {
 	if apdu == nil {
 		return nil, fmt.Errorf("apdu is nil")
 	}
 	iv := g.tmp[:AES_BLOCK_SIZE] // a bit hardcore
-	copy(iv, systitle)
+	copy(iv, systemtitle)
 	iv[8] = byte(fc >> 24)
 	iv[9] = byte(fc >> 16)
 	iv[10] = byte(fc >> 8)

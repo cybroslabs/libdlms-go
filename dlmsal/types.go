@@ -8,6 +8,62 @@ import (
 	"time"
 )
 
+type GetRequestTag byte
+
+const (
+	TagGetRequestNormal   GetRequestTag = 0x1
+	TagGetRequestNext     GetRequestTag = 0x2
+	TagGetRequestWithList GetRequestTag = 0x3
+)
+
+type GetResponseTag byte
+
+const (
+	TagGetResponseNormal        GetResponseTag = 0x1
+	TagGetResponseWithDataBlock GetResponseTag = 0x2
+	TagGetResponseWithList      GetResponseTag = 0x3
+)
+
+type SetRequestTag byte
+
+const (
+	TagSetRequestNormal                    SetRequestTag = 0x1
+	TagSetRequestWithFirstDataBlock        SetRequestTag = 0x2
+	TagSetRequestWithDataBlock             SetRequestTag = 0x3
+	TagSetRequestWithList                  SetRequestTag = 0x4
+	TagSetRequestWithListAndFirstDataBlock SetRequestTag = 0x5
+)
+
+type SetResponseTag byte
+
+const (
+	TagSetResponseNormal                SetResponseTag = 0x1
+	TagSetResponseDataBlock             SetResponseTag = 0x2
+	TagSetResponseLastDataBlock         SetResponseTag = 0x3
+	TagSetResponseLastDataBlockWithList SetResponseTag = 0x4
+	TagSetResponseWithList              SetResponseTag = 0x5
+)
+
+type ActionRequestTag byte
+
+const (
+	TagActionRequestNormal                 ActionRequestTag = 0x1
+	TagActionRequestNextPBlock             ActionRequestTag = 0x2
+	TagActionRequestWithList               ActionRequestTag = 0x3
+	TagActionRequestWithFirstPBlock        ActionRequestTag = 0x4
+	TagActionRequestWithListAndFirstPBlock ActionRequestTag = 0x5
+	TagActionRequestWithPBlock             ActionRequestTag = 0x6
+)
+
+type ActionResponseTag byte
+
+const (
+	TagActionResponseNormal     ActionResponseTag = 0x1
+	TagActionResponseWithPBlock ActionResponseTag = 0x2
+	TagActionResponseWithList   ActionResponseTag = 0x3
+	TagActionResponseNextPBlock ActionResponseTag = 0x4
+)
+
 type ValueType byte
 
 const (

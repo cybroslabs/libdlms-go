@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/cybroslabs/libdlms-go/base"
 	"github.com/cybroslabs/libdlms-go/gcm"
 )
 
 // send and optionally encrypt packet at pdu to transport layer, returns also answer stream object with transparent ciphering and tag reading, hell
-func (d *dlmsal) sendpdu() (tag CosemTag, str io.Reader, err error) {
+func (d *dlmsal) sendpdu() (tag base.CosemTag, str io.Reader, err error) {
 	local := &d.pdu
 	if local.Len() == 0 {
 		return tag, nil, fmt.Errorf("empty pdu")
@@ -17,33 +18,33 @@ func (d *dlmsal) sendpdu() (tag CosemTag, str io.Reader, err error) {
 	b := local.Bytes()
 	s := d.settings
 	if s.dedgcm != nil {
-		switch CosemTag(b[0]) {
-		case TagGetRequest:
-			tag = TagDedGetRequest
-		case TagSetRequest:
-			tag = TagDedSetRequest
-		case TagActionRequest:
-			tag = TagDedActionRequest
-		case TagReadRequest:
-			tag = TagDedReadRequest
-		case TagWriteRequest:
-			tag = TagDedWriteRequest
+		switch base.CosemTag(b[0]) {
+		case base.TagGetRequest:
+			tag = base.TagDedGetRequest
+		case base.TagSetRequest:
+			tag = base.TagDedSetRequest
+		case base.TagActionRequest:
+			tag = base.TagDedActionRequest
+		case base.TagReadRequest:
+			tag = base.TagDedReadRequest
+		case base.TagWriteRequest:
+			tag = base.TagDedWriteRequest
 		default:
 			return tag, nil, fmt.Errorf("unsupported tag %v", b[0])
 		}
 		b, err = d.encryptpacket(byte(tag), b, true)
 	} else if s.gcm != nil {
-		switch CosemTag(b[0]) {
-		case TagGetRequest:
-			tag = TagGloGetRequest
-		case TagSetRequest:
-			tag = TagGloSetRequest
-		case TagActionRequest:
-			tag = TagGloActionRequest
-		case TagReadRequest:
-			tag = TagGloReadRequest
-		case TagWriteRequest:
-			tag = TagGloWriteRequest
+		switch base.CosemTag(b[0]) {
+		case base.TagGetRequest:
+			tag = base.TagGloGetRequest
+		case base.TagSetRequest:
+			tag = base.TagGloSetRequest
+		case base.TagActionRequest:
+			tag = base.TagGloActionRequest
+		case base.TagReadRequest:
+			tag = base.TagGloReadRequest
+		case base.TagWriteRequest:
+			tag = base.TagGloWriteRequest
 		default:
 			return tag, nil, fmt.Errorf("unsupported tag %v", b[0])
 		}
@@ -65,17 +66,17 @@ func (d *dlmsal) sendpdu() (tag CosemTag, str io.Reader, err error) {
 	if err != nil {
 		return
 	}
-	tag = CosemTag(d.tmpbuffer[0])
+	tag = base.CosemTag(d.tmpbuffer[0])
 	switch tag {
-	case TagGloGetResponse, TagGloSetResponse, TagGloActionResponse, TagGloReadResponse, TagGloWriteResponse:
+	case base.TagGloGetResponse, base.TagGloSetResponse, base.TagGloActionResponse, base.TagGloReadResponse, base.TagGloWriteResponse:
 		return d.recvcipheredpdu(tag, false)
-	case TagDedGetResponse, TagDedSetResponse, TagDedActionResponse, TagDedReadResponse, TagDedWriteResponse:
+	case base.TagDedGetResponse, base.TagDedSetResponse, base.TagDedActionResponse, base.TagDedReadResponse, base.TagDedWriteResponse:
 		return d.recvcipheredpdu(tag, true)
 	}
 	return tag, d.transport, err
 }
 
-func (d *dlmsal) recvcipheredpdu(rtag CosemTag, ded bool) (tag CosemTag, str io.Reader, err error) {
+func (d *dlmsal) recvcipheredpdu(rtag base.CosemTag, ded bool) (tag base.CosemTag, str io.Reader, err error) {
 	tag = rtag
 	s := d.settings
 	var gcm gcm.Gcm
@@ -99,7 +100,7 @@ func (d *dlmsal) recvcipheredpdu(rtag CosemTag, ded bool) (tag CosemTag, str io.
 		return tag, nil, fmt.Errorf("unable to read SC byte and frame counter")
 	}
 	fc := binary.BigEndian.Uint32(d.tmpbuffer[1:])
-	str, err = gcm.GetDecryptorStream(d.tmpbuffer[0], fc, d.aareres.systemTitle, io.LimitReader(d.transport, int64(l)))
+	str, err = gcm.GetDecryptorStream(d.tmpbuffer[0], fc, io.LimitReader(d.transport, int64(l)))
 	if err != nil {
 		return
 	}
@@ -107,6 +108,6 @@ func (d *dlmsal) recvcipheredpdu(rtag CosemTag, ded bool) (tag CosemTag, str io.
 	if err != nil {
 		return
 	}
-	tag = CosemTag(d.tmpbuffer[0])
+	tag = base.CosemTag(d.tmpbuffer[0])
 	return
 }

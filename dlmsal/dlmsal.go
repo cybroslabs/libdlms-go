@@ -12,33 +12,7 @@ import (
 )
 
 const (
-	DlmsVersion = 0x06
-
-	VAANameLN = 0x0007
-	VAANameSN = 0xFA00
-
 	maxsmallreadout = 2048
-)
-
-type Authentication byte
-
-const (
-	AuthenticationNone       Authentication = 0 // No authentication is used.
-	AuthenticationLow        Authentication = 1 // Low authentication is used.
-	AuthenticationHigh       Authentication = 2 // High authentication is used.
-	AuthenticationHighMD5    Authentication = 3 // High authentication is used. Password is hashed with MD5.
-	AuthenticationHighSHA1   Authentication = 4 // High authentication is used. Password is hashed with SHA1.
-	AuthenticationHighGmac   Authentication = 5 // High authentication is used. Password is hashed with GMAC.
-	AuthenticationHighSha256 Authentication = 6 // High authentication is used. Password is hashed with SHA-256.
-	AuthenticationHighEcdsa  Authentication = 7 // High authentication is used. Password is hashed with ECDSA.
-)
-
-type DlmsSecurity byte
-
-const (
-	SecurityNone           DlmsSecurity = 0    // Transport security is not used.
-	SecurityAuthentication DlmsSecurity = 0x10 // Authentication security is used.
-	SecurityEncryption     DlmsSecurity = 0x20 // Encryption security is used.
 )
 
 type DlmsSNRequestItem struct {
@@ -70,9 +44,9 @@ type DlmsClient interface {
 	GetStream(item DlmsLNRequestItem, inmem bool) (DlmsDataStream, error)
 	Read(items []DlmsSNRequestItem) ([]DlmsData, error)
 	ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream, error) // only for big single item queries
-	Write(items []DlmsSNRequestItem) ([]DlmsResultTag, error)
+	Write(items []DlmsSNRequestItem) ([]base.DlmsResultTag, error)
 	Action(item DlmsLNRequestItem) (*DlmsData, error)
-	Set(items []DlmsLNRequestItem) ([]DlmsResultTag, error)
+	Set(items []DlmsLNRequestItem) ([]base.DlmsResultTag, error)
 	LNAuthentication(checkresp bool) error
 }
 
@@ -100,16 +74,16 @@ type DlmsSettings struct {
 	HighPriority      bool
 	ConfirmedRequests bool
 	EmptyRLRQ         bool
-	Security          DlmsSecurity
+	Security          base.DlmsSecurity
 	StoC              []byte
-	SourceDiagnostic  SourceDiagnostic
+	SourceDiagnostic  base.SourceDiagnostic
 	ServerSystemTitle []byte
 
 	// private part
 	ctos               []byte
 	invokebyte         byte
-	authentication     Authentication
-	applicationContext ApplicationContext
+	authentication     base.Authentication
+	applicationContext base.ApplicationContext
 	password           []byte
 	gcm                gcm.Gcm
 	systemtitle        []byte
@@ -132,11 +106,11 @@ func NewSettingsWithLowAuthenticationSN(password string) (*DlmsSettings, error) 
 		return nil, fmt.Errorf("password is empty")
 	}
 	return &DlmsSettings{
-		authentication:     AuthenticationLow,
-		applicationContext: ApplicationContextSNNoCiphering,
+		authentication:     base.AuthenticationLow,
+		applicationContext: base.ApplicationContextSNNoCiphering,
 		password:           []byte(password),
-		ConformanceBlock: ConformanceBlockBlockTransferWithGetOrRead | ConformanceBlockBlockTransferWithSetOrWrite |
-			ConformanceBlockRead | ConformanceBlockWrite | ConformanceBlockSelectiveAccess | ConformanceBlockMultipleReferences,
+		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
+			base.ConformanceBlockRead | base.ConformanceBlockWrite | base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences,
 	}, nil
 }
 
@@ -145,26 +119,26 @@ func NewSettingsWithLowAuthenticationLN(password string) (*DlmsSettings, error) 
 		return nil, fmt.Errorf("password is empty")
 	}
 	return &DlmsSettings{
-		authentication:     AuthenticationLow,
-		applicationContext: ApplicationContextLNNoCiphering,
+		authentication:     base.AuthenticationLow,
+		applicationContext: base.ApplicationContextLNNoCiphering,
 		password:           []byte(password),
 		HighPriority:       true,
 		ConfirmedRequests:  true,
-		ConformanceBlock: ConformanceBlockBlockTransferWithGetOrRead | ConformanceBlockBlockTransferWithSetOrWrite |
-			ConformanceBlockBlockTransferWithAction | ConformanceBlockAction | ConformanceBlockGet | ConformanceBlockSet |
-			ConformanceBlockSelectiveAccess | ConformanceBlockMultipleReferences | ConformanceBlockAttribute0SupportedWithGet,
+		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
+			base.ConformanceBlockBlockTransferWithAction | base.ConformanceBlockAction | base.ConformanceBlockGet | base.ConformanceBlockSet |
+			base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences | base.ConformanceBlockAttribute0SupportedWithGet,
 	}, nil
 }
 
 func NewSettingsNoAuthenticationLN() (*DlmsSettings, error) {
 	return &DlmsSettings{
-		authentication:     AuthenticationNone,
-		applicationContext: ApplicationContextLNNoCiphering,
+		authentication:     base.AuthenticationNone,
+		applicationContext: base.ApplicationContextLNNoCiphering,
 		HighPriority:       true,
 		ConfirmedRequests:  true,
-		ConformanceBlock: ConformanceBlockBlockTransferWithGetOrRead | ConformanceBlockBlockTransferWithSetOrWrite |
-			ConformanceBlockBlockTransferWithAction | ConformanceBlockAction | ConformanceBlockGet | ConformanceBlockSet |
-			ConformanceBlockSelectiveAccess | ConformanceBlockMultipleReferences | ConformanceBlockAttribute0SupportedWithGet,
+		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
+			base.ConformanceBlockBlockTransferWithAction | base.ConformanceBlockAction | base.ConformanceBlockGet | base.ConformanceBlockSet |
+			base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences | base.ConformanceBlockAttribute0SupportedWithGet,
 	}, nil
 }
 
@@ -176,19 +150,19 @@ func NewSettingsWithGmacLN(systemtitle []byte, g gcm.Gcm, ctoshash []byte, fc ui
 		return nil, fmt.Errorf("ctoshash is empty")
 	}
 	ret := DlmsSettings{
-		authentication:     AuthenticationHighGmac,
-		applicationContext: ApplicationContextLNCiphering,
+		authentication:     base.AuthenticationHighGmac,
+		applicationContext: base.ApplicationContextLNCiphering,
 		HighPriority:       true,
 		ConfirmedRequests:  true,
-		ConformanceBlock: ConformanceBlockBlockTransferWithGetOrRead | ConformanceBlockBlockTransferWithSetOrWrite |
-			ConformanceBlockBlockTransferWithAction | ConformanceBlockAction | ConformanceBlockGet | ConformanceBlockSet |
-			ConformanceBlockSelectiveAccess | ConformanceBlockMultipleReferences | ConformanceBlockAttribute0SupportedWithGet |
-			ConformanceBlockGeneralProtection,
+		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
+			base.ConformanceBlockBlockTransferWithAction | base.ConformanceBlockAction | base.ConformanceBlockGet | base.ConformanceBlockSet |
+			base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences | base.ConformanceBlockAttribute0SupportedWithGet |
+			base.ConformanceBlockGeneralProtection,
 		systemtitle:  newcopy(systemtitle),
 		gcm:          g,
 		password:     newcopy(ctoshash),
 		framecounter: fc,
-		Security:     SecurityEncryption | SecurityAuthentication,
+		Security:     base.SecurityEncryption | base.SecurityAuthentication,
 	}
 	ret.ctos = ret.password // just reference
 	return &ret, nil
@@ -271,7 +245,7 @@ func (d *dlmsal) smallreadout() ([]byte, error) {
 
 func (d *dlmsal) logstate(st bool) bool {
 	switch d.settings.authentication {
-	case AuthenticationLow:
+	case base.AuthenticationLow:
 		if st {
 			d.transport.SetLogger(d.logger)
 		} else {
@@ -317,30 +291,31 @@ func (d *dlmsal) Open() error { // login and shits
 	if err != nil {
 		return fmt.Errorf("unable to parse aare: %w", err)
 	}
-	if tag != byte(TagAARE) {
+	if tag != byte(base.TagAARE) {
 		return fmt.Errorf("unexpected tag: %x", tag)
 	}
 	tags, err := decodeaare(data, &d.tmpbuffer)
 	if err != nil {
 		return fmt.Errorf("unable to parse aare: %w", err)
 	}
+	var uitag *aaretag
+	mask := 0
 	for _, dt := range tags {
 		switch dt.tag {
-		case BERTypeContext | BERTypeConstructed | PduTypeApplicationContextName: // 0xa1
-			d.aareres.applicationContextName, err = parseApplicationContextName(&dt)
-		case BERTypeContext | BERTypeConstructed | PduTypeCalledAPTitle: // 0xa2
-			d.aareres.associationResult, err = parseAssociationResult(&dt)
-		case BERTypeContext | BERTypeConstructed | PduTypeCalledAEQualifier: // 0xa3
-			d.aareres.sourceDiagnostic, err = parseAssociateSourceDiagnostic(&dt)
-		case BERTypeContext | BERTypeConstructed | PduTypeCalledAPInvocationID: // 0xa4
-			d.aareres.systemTitle, err = parseAPTitle(&dt, &d.tmpbuffer)
-			if err == nil {
-				d.settings.ServerSystemTitle = d.aareres.systemTitle // no copy here, just reference, a bit hacky as gcm itself doesnt have any extended interface for handling this
-			}
-		case BERTypeContext | BERTypeConstructed | PduTypeSenderAcseRequirements: // 0xaa
-			d.settings.StoC, err = parseSenderAcseRequirements(&dt, &d.tmpbuffer)
-		case BERTypeContext | BERTypeConstructed | PduTypeUserInformation: // 0xbe
-			d.aareres.initiateResponse, d.aareres.confirmedServiceError, err = d.parseUserInformation(&dt)
+		case base.BERTypeContext | base.BERTypeConstructed | base.PduTypeApplicationContextName: // 0xa1
+			d.aareres.applicationContextName, err = parseApplicationContextName(dt)
+		case base.BERTypeContext | base.BERTypeConstructed | base.PduTypeCalledAPTitle: // 0xa2
+			d.aareres.associationResult, err = parseAssociationResult(dt)
+		case base.BERTypeContext | base.BERTypeConstructed | base.PduTypeCalledAEQualifier: // 0xa3
+			d.aareres.sourceDiagnostic, err = parseAssociateSourceDiagnostic(dt)
+		case base.BERTypeContext | base.BERTypeConstructed | base.PduTypeCalledAPInvocationID: // 0xa4
+			d.settings.ServerSystemTitle, err = parseAPTitle(dt, &d.tmpbuffer)
+			mask |= 1
+		case base.BERTypeContext | base.BERTypeConstructed | base.PduTypeSenderAcseRequirements: // 0xaa
+			d.settings.StoC, err = parseSenderAcseRequirements(dt, &d.tmpbuffer)
+			mask |= 2
+		case base.BERTypeContext | base.BERTypeConstructed | base.PduTypeUserInformation: // 0xbe
+			uitag = &dt
 		default:
 			d.logf("Unknown tag: %02x", dt.tag)
 		}
@@ -350,19 +325,45 @@ func (d *dlmsal) Open() error { // login and shits
 		}
 	}
 
+	if uitag == nil {
+		return fmt.Errorf("no user information tag found")
+	}
+	if d.settings.gcm != nil {
+		if mask != 3 {
+			return fmt.Errorf("gcm is apparently enabled, but no stoc or serversystemtitle found")
+		}
+		err = d.settings.gcm.Setup(d.settings.ServerSystemTitle, d.settings.StoC)
+		if err != nil {
+			return err
+		}
+	}
+	if d.settings.dedgcm != nil { // a bit questionable, if there is already gcm, there should be also stoc and systemtitles
+		if mask != 3 {
+			return fmt.Errorf("dedicated gcm is apparently enabled, but no stoc or serversystemtitle found")
+		}
+		err = d.settings.dedgcm.Setup(d.settings.ServerSystemTitle, d.settings.StoC)
+		if err != nil {
+			return err
+		}
+	}
+	d.aareres.initiateResponse, d.aareres.confirmedServiceError, err = d.parseUserInformation(*uitag)
+	if err != nil {
+		return fmt.Errorf("unable to parse user information: %w", err)
+	}
+
 	if d.aareres.confirmedServiceError != nil {
 		return fmt.Errorf("confirmed service error: %v", d.aareres.confirmedServiceError.ConfirmedServiceError)
 	}
 	if d.aareres.applicationContextName != d.settings.applicationContext {
 		return fmt.Errorf("application contextes differ: %v != %v", d.aareres.applicationContextName, d.settings.applicationContext)
 	}
-	if d.aareres.associationResult != AssociationResultAccepted {
+	if d.aareres.associationResult != base.AssociationResultAccepted {
 		return fmt.Errorf("login failed: %v", d.aareres.associationResult)
 	}
 	d.settings.SourceDiagnostic = d.aareres.sourceDiagnostic // duplicit information, damn it, maybe make a bit bigger settings, or maybe status?
 	switch d.aareres.sourceDiagnostic {
-	case SourceDiagnosticNone:
-	case SourceDiagnosticAuthenticationRequired:
+	case base.SourceDiagnosticNone:
+	case base.SourceDiagnosticAuthenticationRequired:
 	default:
 		return fmt.Errorf("invalid source diagnostic: %v", d.aareres.sourceDiagnostic)
 	}

@@ -39,20 +39,19 @@ type gcmkms struct {
 	clientTitle   []byte
 	ctos          []byte
 	initdone      bool
-	setupdone     bool
 	ctx           context.Context
 	stream        grpc.BidiStreamingClient[crypto.DlmsIn, crypto.DlmsOut]
 	cmdid         uint64
 }
 
 // Decrypt implements Gcm.
-func (g *gcmkms) Decrypt(ret []byte, sc byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error) {
-	return g.Decrypt2(ret, sc, sc, fc, systitle, apdu)
+func (g *gcmkms) Decrypt(ret []byte, sc byte, fc uint32, apdu []byte) ([]byte, error) {
+	return g.Decrypt2(ret, sc, sc, fc, apdu)
 }
 
 // Encrypt implements Gcm.
-func (g *gcmkms) Encrypt(ret []byte, sc byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error) {
-	return g.Encrypt2(ret, sc, sc, fc, systitle, apdu)
+func (g *gcmkms) Encrypt(ret []byte, sc byte, fc uint32, apdu []byte) ([]byte, error) {
+	return g.Encrypt2(ret, sc, sc, fc, apdu)
 }
 
 func (g *gcmkms) sendcmd(input *crypto.DlmsIn) ([]byte, error) {
@@ -104,33 +103,52 @@ func (g *gcmkms) init() (err error) {
 	return
 }
 
-func (g *gcmkms) setup(systitle []byte) (err error) {
-	if g.setupdone {
-		return nil
+func (g *gcmkms) Setup(systemtitleS []byte, stoc []byte) (err error) {
+	err = g.init()
+	if err != nil {
+		return
 	}
+
 	_, err = g.sendcmd(crypto.DlmsIn_builder{
 		Setup: crypto.DlmsSetServerInfo_builder{
-			SystemTitleS: systitle,
-			SToC:         nil, // TODO: for other crypto types, we need to implement this
+			SystemTitleS: systemtitleS,
+			SToC:         stoc,
 		}.Build(),
 	}.Build())
-	if err != nil {
-		g.setupdone = true
-	}
 	return
 }
 
+func (g *gcmkms) Hash(dir GcmDirection, sc byte, fc uint32) ([]byte, error) {
+	err := g.init()
+	if err != nil {
+		return nil, err
+	}
+
+	var d crypto.HashDirection
+	switch dir {
+	case DirectionServerToClient:
+		d = crypto.HashDirection_SERVER_TO_CLIENT
+	case DirectionClientToServer:
+		d = crypto.HashDirection_CLIENT_TO_SERVER
+	default:
+		return nil, fmt.Errorf("invalid direction %v", dir)
+	}
+	return g.sendcmd(crypto.DlmsIn_builder{
+		Hash: crypto.DlmsHash_builder{
+			Direction:       ptr.To(d),
+			FrameCounter:    &fc,
+			SecurityControl: ptr.To(uint32(sc)),
+		}.Build(),
+	}.Build())
+}
+
 // Decrypt2 implements Gcm.
-func (g *gcmkms) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, systitle []byte, apdu []byte) ([]byte, error) {
+func (g *gcmkms) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error) {
 	if scContent != scControl {
 		return nil, fmt.Errorf("scContent %02X != scControl %02X", scContent, scControl)
 	}
 
 	err := g.init()
-	if err != nil {
-		return nil, err
-	}
-	err = g.setup(systitle)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +173,7 @@ func (g *gcmkms) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32,
 }
 
 // Encrypt2 implements Gcm.
-func (g *gcmkms) Encrypt2(ret []byte, scControl byte, scContent byte, fc uint32, _ []byte, apdu []byte) ([]byte, error) { // check systitle equality, but it really hurts sending it every packet
+func (g *gcmkms) Encrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error) { // check systitle equality, but it really hurts sending it every packet
 	if scContent != scControl {
 		return nil, fmt.Errorf("scContent %02X != scControl %02X", scContent, scControl)
 	}
@@ -184,18 +202,18 @@ func (g *gcmkms) Encrypt2(ret []byte, scControl byte, scContent byte, fc uint32,
 }
 
 // GetDecryptorStream implements Gcm.
-func (g *gcmkms) GetDecryptorStream(sc byte, fc uint32, systitle []byte, apdu io.Reader) (io.Reader, error) {
-	return g.GetDecryptorStream2(sc, sc, fc, systitle, apdu)
+func (g *gcmkms) GetDecryptorStream(sc byte, fc uint32, apdu io.Reader) (io.Reader, error) {
+	return g.GetDecryptorStream2(sc, sc, fc, apdu)
 }
 
 // GetDecryptorStream2 implements Gcm.
-func (g *gcmkms) GetDecryptorStream2(scControl byte, scContent byte, fc uint32, systitle []byte, apdu io.Reader) (io.Reader, error) {
+func (g *gcmkms) GetDecryptorStream2(scControl byte, scContent byte, fc uint32, apdu io.Reader) (io.Reader, error) {
 	data, err := io.ReadAll(apdu) // not streamed at all in this case
 	if err != nil {
 		return nil, err
 	}
 
-	dec, err := g.Decrypt2(nil, scControl, scContent, fc, systitle, data)
+	dec, err := g.Decrypt2(nil, scControl, scContent, fc, data)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +246,6 @@ func NewGCMKMS(settings *GcmKMSSettings) (GcmKMS, error) { // so only suite 0 ri
 		serialNumber:  settings.SerialNumber,
 		driverId:      settings.DriverId,
 		initdone:      false,
-		setupdone:     false,
 		ctx:           settings.Context,
 	}
 	ret.clientTitle = append(ret.clientTitle, settings.ClientTitle...) // get copy

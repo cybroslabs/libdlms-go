@@ -58,7 +58,7 @@ func (ln *dlmsalget) get(items []DlmsLNRequestItem) ([]DlmsData, error) {
 	master := ln.master
 	local := &master.pdu
 	local.Reset()
-	local.WriteByte(byte(TagGetRequest))
+	local.WriteByte(byte(base.TagGetRequest))
 	if len(items) > 1 {
 		local.WriteByte(byte(TagGetRequestWithList))
 	} else {
@@ -104,7 +104,7 @@ func (ln *dlmsalget) getstream(item DlmsLNRequestItem, inmem bool) (DlmsDataStre
 	master := ln.master
 	local := &master.pdu
 	local.Reset()
-	local.WriteByte(byte(TagGetRequest))
+	local.WriteByte(byte(base.TagGetRequest))
 	local.WriteByte(byte(TagGetRequestNormal))
 	master.invokeid = (master.invokeid + 1) & 7
 	local.WriteByte(master.invokeid | master.settings.invokebyte)
@@ -123,11 +123,11 @@ func (ln *dlmsalget) getstream(item DlmsLNRequestItem, inmem bool) (DlmsDataStre
 	return ln.getstreamdata(tag, inmem)
 }
 
-func (ln *dlmsalget) getstreamdata(tag CosemTag, inmem bool) (s DlmsDataStream, err error) {
+func (ln *dlmsalget) getstreamdata(tag base.CosemTag, inmem bool) (s DlmsDataStream, err error) {
 	master := ln.master
 	switch tag {
-	case TagGetResponse:
-	case TagExceptionResponse: // no lower layer readout
+	case base.TagGetResponse:
+	case base.TagExceptionResponse: // no lower layer readout
 		d, err := decodeException(ln.transport, &master.tmpbuffer)
 		if err != nil {
 			return nil, err
@@ -146,7 +146,7 @@ func (ln *dlmsalget) getstreamdata(tag CosemTag, inmem bool) (s DlmsDataStream, 
 		return nil, fmt.Errorf("unexpected invoke id")
 	}
 
-	switch getResponseTag(master.tmpbuffer[0]) {
+	switch GetResponseTag(master.tmpbuffer[0]) {
 	case TagGetResponseNormal:
 		// decode data themselves
 		_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
@@ -158,11 +158,11 @@ func (ln *dlmsalget) getstreamdata(tag CosemTag, inmem bool) (s DlmsDataStream, 
 			_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
 			if err != nil {
 				if errors.Is(err, io.ErrUnexpectedEOF) {
-					return nil, NewDlmsError(TagResultOtherReason) // this kind of data cant be decoded, so that is why
+					return nil, NewDlmsError(base.TagResultOtherReason) // this kind of data cant be decoded, so that is why
 				}
 				return nil, err
 			}
-			return nil, NewDlmsError(DlmsResultTag(master.tmpbuffer[0]))
+			return nil, NewDlmsError(base.DlmsResultTag(master.tmpbuffer[0]))
 		}
 		str, err := newDataStream(ln.transport, inmem, master.logger)
 		if err != nil {
@@ -180,13 +180,13 @@ func (ln *dlmsalget) getstreamdata(tag CosemTag, inmem bool) (s DlmsDataStream, 
 	return nil, fmt.Errorf("unexpected response tag: %02x", master.tmpbuffer[0])
 }
 
-func (ln *dlmsalget) getnextdata(tag CosemTag, i int) (cont bool, err error) {
+func (ln *dlmsalget) getnextdata(tag base.CosemTag, i int) (cont bool, err error) {
 	master := ln.master
 	switch ln.state {
 	case 0: // read first things as a response
 		switch tag {
-		case TagGetResponse:
-		case TagExceptionResponse: // no lower layer readout
+		case base.TagGetResponse:
+		case base.TagExceptionResponse: // no lower layer readout
 			d, err := decodeException(ln.transport, &master.tmpbuffer)
 			for i := 0; i < len(ln.data); i++ {
 				ln.data[i] = d
@@ -205,7 +205,7 @@ func (ln *dlmsalget) getnextdata(tag CosemTag, i int) (cont bool, err error) {
 			return false, fmt.Errorf("unexpected invoke id")
 		}
 
-		switch getResponseTag(master.tmpbuffer[0]) {
+		switch GetResponseTag(master.tmpbuffer[0]) {
 		case TagGetResponseNormal:
 			if len(ln.data) > 1 {
 				return false, fmt.Errorf("expecting list response")
@@ -220,12 +220,12 @@ func (ln *dlmsalget) getnextdata(tag CosemTag, i int) (cont bool, err error) {
 				_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
 				if err != nil {
 					if errors.Is(err, io.ErrUnexpectedEOF) {
-						ln.data[i] = NewDlmsDataError(TagResultOtherReason) // this kind of data cant be decoded, so that is why
+						ln.data[i] = NewDlmsDataError(base.TagResultOtherReason) // this kind of data cant be decoded, so that is why
 					} else {
 						return false, err
 					}
 				} else {
-					ln.data[i] = NewDlmsDataError(DlmsResultTag(master.tmpbuffer[0]))
+					ln.data[i] = NewDlmsDataError(base.DlmsResultTag(master.tmpbuffer[0]))
 				}
 			} else {
 				ln.data[i], _, err = decodeDataTag(ln.transport, &master.tmpbuffer)
@@ -253,7 +253,7 @@ func (ln *dlmsalget) getnextdata(tag CosemTag, i int) (cont bool, err error) {
 					if err != nil {
 						return false, err
 					}
-					ln.data[i] = NewDlmsDataError(DlmsResultTag(master.tmpbuffer[0]))
+					ln.data[i] = NewDlmsDataError(base.DlmsResultTag(master.tmpbuffer[0]))
 				} else {
 					ln.data[i], _, err = decodeDataTag(ln.transport, &master.tmpbuffer)
 					if err != nil {
@@ -301,7 +301,7 @@ func (ln *dlmsalget) decodedata(i int) (err error) {
 		if err != nil {
 			return
 		}
-		ln.data[i] = NewDlmsDataError(DlmsResultTag(master.tmpbuffer[0]))
+		ln.data[i] = NewDlmsDataError(base.DlmsResultTag(master.tmpbuffer[0]))
 	} else {
 		ln.data[i], _, err = decodeDataTag(ln, &master.tmpbuffer)
 	}
@@ -347,7 +347,7 @@ func (ln *dlmsalget) Read(p []byte) (n int, err error) { // this will go to data
 			// ask for the next block
 			local := &master.pdu
 			local.Reset()
-			local.WriteByte(byte(TagGetRequest))
+			local.WriteByte(byte(base.TagGetRequest))
 			local.WriteByte(byte(TagGetRequestNext))
 			local.WriteByte(master.invokeid | master.settings.invokebyte)
 			local.WriteByte(byte(ln.blockexp >> 24))
@@ -358,7 +358,7 @@ func (ln *dlmsalget) Read(p []byte) (n int, err error) { // this will go to data
 			if err != nil {
 				return 0, err
 			}
-			if tag != TagGetResponse {
+			if tag != base.TagGetResponse {
 				return 0, fmt.Errorf("unexpected response tag: %02x", tag)
 			}
 			ln.transport = str

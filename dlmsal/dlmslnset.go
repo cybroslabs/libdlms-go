@@ -25,10 +25,10 @@ func encodelnsetitem(dst *bytes.Buffer, item *DlmsLNRequestItem) error {
 	return nil
 }
 
-func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]DlmsResultTag, error) {
+func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]base.DlmsResultTag, error) {
 	local := &al.pdu
 	local.Reset()
-	local.WriteByte(byte(TagSetRequest))
+	local.WriteByte(byte(base.TagSetRequest))
 	al.invokeid = (al.invokeid + 1) & 7
 	local.WriteByte(al.invokeid | al.settings.invokebyte)
 	local.WriteByte(byte(TagSetRequestNormal))
@@ -43,11 +43,11 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]DlmsResultTag, error) {
 		return nil, err
 	}
 
-	ret := make([]DlmsResultTag, 1)
+	ret := make([]base.DlmsResultTag, 1)
 
 	if local.Len()+sdata.Len() > al.maxPduSendSize-6-gcm.GCM_TAG_LENGTH { // block transfer, count on 6 bytes for tag and worst length and tag, ok, possible byte wasting here
 		local.Reset() // possible large memory allocated here, but only for one job
-		local.WriteByte(byte(TagSetRequest))
+		local.WriteByte(byte(base.TagSetRequest))
 		local.WriteByte(al.invokeid | al.settings.invokebyte)
 		local.WriteByte(byte(TagSetRequestWithFirstDataBlock))
 		_ = encodelnsetitem(local, &item)
@@ -86,8 +86,8 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]DlmsResultTag, error) {
 				return nil, err
 			}
 			switch tag {
-			case TagSetResponse:
-			case TagExceptionResponse:
+			case base.TagSetResponse:
+			case base.TagExceptionResponse:
 				d, err := decodeException(str, &al.tmpbuffer)
 				if err != nil {
 					return nil, err
@@ -105,7 +105,7 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]DlmsResultTag, error) {
 			if al.tmpbuffer[1]&7 != al.invokeid {
 				return nil, fmt.Errorf("unexpected invoke id")
 			}
-			switch setResponseTag(al.tmpbuffer[0]) {
+			switch SetResponseTag(al.tmpbuffer[0]) {
 			case TagSetResponseDataBlock:
 				if last {
 					return nil, fmt.Errorf("expected last data block tag, but not got")
@@ -115,7 +115,7 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]DlmsResultTag, error) {
 				}
 				// ask for another block
 				local.Reset()
-				local.WriteByte(byte(TagSetRequest))
+				local.WriteByte(byte(base.TagSetRequest))
 				local.WriteByte(al.invokeid | al.settings.invokebyte)
 				local.WriteByte(byte(TagSetRequestWithDataBlock))
 				blno++
@@ -130,7 +130,7 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]DlmsResultTag, error) {
 				if blno != binary.BigEndian.Uint32(al.tmpbuffer[3:]) {
 					return nil, fmt.Errorf("unexpected block number")
 				}
-				ret[0] = DlmsResultTag(al.tmpbuffer[2])
+				ret[0] = base.DlmsResultTag(al.tmpbuffer[2])
 			default:
 				return nil, fmt.Errorf("unexpected tag: %02x", al.tmpbuffer[0])
 			}
@@ -142,8 +142,8 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]DlmsResultTag, error) {
 			return nil, err
 		}
 		switch tag {
-		case TagSetResponse:
-		case TagExceptionResponse:
+		case base.TagSetResponse:
+		case base.TagExceptionResponse:
 			d, err := decodeException(str, &al.tmpbuffer)
 			if err != nil {
 				return nil, err
@@ -165,12 +165,12 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]DlmsResultTag, error) {
 			return nil, fmt.Errorf("unexpected invoke id")
 		}
 
-		ret[0] = DlmsResultTag(al.tmpbuffer[2])
+		ret[0] = base.DlmsResultTag(al.tmpbuffer[2])
 	}
 	return ret, nil
 }
 
-func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []DlmsResultTag, err error) {
+func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err error) {
 	if !al.isopen {
 		return nil, base.ErrNotOpened
 	}
@@ -186,7 +186,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []DlmsResultTag, err error
 	// ok, so fun with list damn it
 	local := &al.pdu
 	local.Reset()
-	local.WriteByte(byte(TagSetRequest))
+	local.WriteByte(byte(base.TagSetRequest))
 	al.invokeid = (al.invokeid + 1) & 7
 	local.WriteByte(al.invokeid | al.settings.invokebyte)
 	local.WriteByte(byte(TagSetRequestWithList))
@@ -207,11 +207,11 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []DlmsResultTag, err error
 		}
 	}
 
-	ret = make([]DlmsResultTag, len(items))
+	ret = make([]base.DlmsResultTag, len(items))
 
 	if local.Len()+sdata.Len() > al.maxPduSendSize-6-gcm.GCM_TAG_LENGTH { // block transfer, count on 6 bytes for tag and worst length and tag, ok, possible byte wasting here
 		local.Reset()
-		local.WriteByte(byte(TagSetRequest))
+		local.WriteByte(byte(base.TagSetRequest))
 		local.WriteByte(al.invokeid | al.settings.invokebyte)
 		local.WriteByte(byte(TagSetRequestWithListAndFirstDataBlock)) // yes yes i can force content to this
 		encodelength(local, uint(len(items)))
@@ -253,8 +253,8 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []DlmsResultTag, err error
 				return nil, err
 			}
 			switch tag {
-			case TagSetResponse:
-			case TagExceptionResponse:
+			case base.TagSetResponse:
+			case base.TagExceptionResponse:
 				d, err := decodeException(str, &al.tmpbuffer)
 				if err != nil {
 					return nil, err
@@ -274,7 +274,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []DlmsResultTag, err error
 			if al.tmpbuffer[1]&7 != al.invokeid {
 				return nil, fmt.Errorf("unexpected invoke id")
 			}
-			switch setResponseTag(al.tmpbuffer[0]) {
+			switch SetResponseTag(al.tmpbuffer[0]) {
 			case TagSetResponseDataBlock:
 				if last {
 					return nil, fmt.Errorf("expected last data block tag, but not got")
@@ -288,7 +288,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []DlmsResultTag, err error
 				}
 				// ask for another block
 				local.Reset()
-				local.WriteByte(byte(TagSetRequest))
+				local.WriteByte(byte(base.TagSetRequest))
 				local.WriteByte(al.invokeid | al.settings.invokebyte)
 				local.WriteByte(byte(TagSetRequestWithDataBlock))
 				blno++
@@ -317,7 +317,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []DlmsResultTag, err error
 					return nil, fmt.Errorf("unexpected block number")
 				}
 				for i := 0; i < len(items); i++ {
-					ret[i] = DlmsResultTag(res[i])
+					ret[i] = base.DlmsResultTag(res[i])
 				}
 			default:
 				return nil, fmt.Errorf("unexpected tag: %02x", al.tmpbuffer[0])
@@ -330,8 +330,8 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []DlmsResultTag, err error
 			return nil, err
 		}
 		switch tag {
-		case TagSetResponse:
-		case TagExceptionResponse:
+		case base.TagSetResponse:
+		case base.TagExceptionResponse:
 			d, err := decodeException(str, &al.tmpbuffer)
 			if err != nil {
 				return nil, err
@@ -373,7 +373,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []DlmsResultTag, err error
 			return nil, err
 		}
 		for i := 0; i < len(items); i++ {
-			ret[i] = DlmsResultTag(res[i])
+			ret[i] = base.DlmsResultTag(res[i])
 		}
 	}
 	return ret, nil

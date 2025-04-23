@@ -32,9 +32,9 @@ func (d *dlmsal) encryptpacket(tag byte, apdu []byte, ded bool) ([]byte, error) 
 	// in this state, encrypt cant remake input reusable buffer
 	var err error
 	if ded {
-		_, err = s.dedgcm.Encrypt(d.cryptbuffer[off:], byte(s.Security), s.framecounter, s.systemtitle, apdu) // this is weird and needs to be tested well
+		_, err = s.dedgcm.Encrypt(d.cryptbuffer[off:], byte(s.Security), s.framecounter, apdu) // this is weird and needs to be tested well
 	} else {
-		_, err = s.gcm.Encrypt(d.cryptbuffer[off:], byte(s.Security), s.framecounter, s.systemtitle, apdu)
+		_, err = s.gcm.Encrypt(d.cryptbuffer[off:], byte(s.Security), s.framecounter, apdu)
 	}
 	s.framecounter++
 	return d.cryptbuffer[:off+wl], err
@@ -50,12 +50,12 @@ func (d *dlmsal) decryptpacket(apdu []byte, ded bool) (ret []byte, err error) { 
 		if s.dedgcm == nil {
 			return nil, fmt.Errorf("no dedicated gcm set for ciphering")
 		}
-		d.cryptbuffer, err = s.dedgcm.Decrypt(d.cryptbuffer, apdu[0], fc, d.aareres.systemTitle, apdu[5:])
+		d.cryptbuffer, err = s.dedgcm.Decrypt(d.cryptbuffer, apdu[0], fc, apdu[5:])
 	} else {
 		if s.gcm == nil {
 			return nil, fmt.Errorf("no global gcm set for ciphering")
 		}
-		d.cryptbuffer, err = s.gcm.Decrypt(d.cryptbuffer, apdu[0], fc, d.aareres.systemTitle, apdu[5:]) // set cryptbuffer just to be reused
+		d.cryptbuffer, err = s.gcm.Decrypt(d.cryptbuffer, apdu[0], fc, apdu[5:]) // set cryptbuffer just to be reused
 	}
 	if err != nil {
 		return nil, err

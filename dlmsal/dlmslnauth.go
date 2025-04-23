@@ -5,20 +5,21 @@ import (
 	"encoding/binary"
 	"fmt"
 
+	"github.com/cybroslabs/libdlms-go/base"
 	"github.com/cybroslabs/libdlms-go/gcm"
 )
 
 func (d *dlmsal) LNAuthentication(checkresp bool) error {
 	s := d.settings
 
-	if d.aareres.associationResult != AssociationResultAccepted { // sadly this zero is also default value
+	if d.aareres.associationResult != base.AssociationResultAccepted { // sadly this zero is also default value
 		return fmt.Errorf("association result not accepted: %v", d.aareres.associationResult)
 	}
 
 	switch s.SourceDiagnostic {
-	case SourceDiagnosticNone:
+	case base.SourceDiagnosticNone:
 		return nil
-	case SourceDiagnosticAuthenticationRequired:
+	case base.SourceDiagnosticAuthenticationRequired:
 	default:
 		return fmt.Errorf("invalid aare response: %v", s.SourceDiagnostic)
 	}
@@ -28,21 +29,18 @@ func (d *dlmsal) LNAuthentication(checkresp bool) error {
 		return fmt.Errorf("no gcm set for ciphering")
 	}
 	// create ctos hash
-	e, err := s.gcm.Encrypt(d.cryptbuffer, byte(SecurityAuthentication), s.framecounter, s.systemtitle, s.StoC)
+	e, err := s.gcm.Hash(gcm.DirectionClientToServer, byte(base.SecurityAuthentication), s.framecounter)
 	if err != nil {
 		return err
 	}
-	if len(e) < gcm.GCM_TAG_LENGTH {
-		return fmt.Errorf("encrypted data too short")
-	}
 
-	hashresp := make([]byte, 5+gcm.GCM_TAG_LENGTH)
-	hashresp[0] = byte(SecurityAuthentication)
+	hashresp := make([]byte, 5+len(e))
+	hashresp[0] = byte(base.SecurityAuthentication)
 	hashresp[1] = byte(s.framecounter >> 24)
 	hashresp[2] = byte(s.framecounter >> 16)
 	hashresp[3] = byte(s.framecounter >> 8)
 	hashresp[4] = byte(s.framecounter)
-	copy(hashresp[5:], e[len(e)-gcm.GCM_TAG_LENGTH:])
+	copy(hashresp[5:], e)
 
 	data := DlmsData{Tag: TagOctetString, Value: hashresp}
 	req := DlmsLNRequestItem{
@@ -70,18 +68,15 @@ func (d *dlmsal) LNAuthentication(checkresp bool) error {
 		return err
 	}
 	// ok, check response against my own hash
-	if len(aresp) != 5+gcm.GCM_TAG_LENGTH || aresp[0] != byte(SecurityAuthentication) {
+	if len(aresp) != 5+gcm.GCM_TAG_LENGTH || aresp[0] != byte(base.SecurityAuthentication) {
 		return fmt.Errorf("invalid stoc hash response")
 	}
-	r, err := s.gcm.Encrypt(d.cryptbuffer, aresp[0], binary.BigEndian.Uint32(aresp[1:]), d.aareres.systemTitle, s.ctos)
+	r, err := s.gcm.Hash(gcm.DirectionServerToClient, aresp[0], binary.BigEndian.Uint32(aresp[1:]))
 	if err != nil {
 		return err
 	}
-	if len(r) < gcm.GCM_TAG_LENGTH {
-		return fmt.Errorf("probably programatic error")
-	}
 
-	if bytes.Equal(aresp[5:], r[len(r)-gcm.GCM_TAG_LENGTH:]) {
+	if bytes.Equal(aresp[5:], r) {
 		return nil
 	}
 

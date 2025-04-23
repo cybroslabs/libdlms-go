@@ -4,34 +4,8 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-)
 
-type AssociationResult byte
-
-const (
-	AssociationResultAccepted          AssociationResult = 0
-	AssociationResultPermanentRejected AssociationResult = 1
-	AssociationResultTransientRejected AssociationResult = 2
-)
-
-type SourceDiagnostic byte
-
-const (
-	SourceDiagnosticNone                                       SourceDiagnostic = 0
-	SourceDiagnosticNoReasonGiven                              SourceDiagnostic = 1
-	SourceDiagnosticApplicationContextNameNotSupported         SourceDiagnostic = 2
-	SourceDiagnosticCallingAPTitleNotRecognized                SourceDiagnostic = 3
-	SourceDiagnosticCallingAPInvocationIdentifierNotRecognized SourceDiagnostic = 4
-	SourceDiagnosticCallingAEQualifierNotRecognized            SourceDiagnostic = 5
-	SourceDiagnosticCallingAEInvocationIdentifierNotRecognized SourceDiagnostic = 6
-	SourceDiagnosticCalledAPTitleNotRecognized                 SourceDiagnostic = 7
-	SourceDiagnosticCalledAPInvocationIdentifierNotRecognized  SourceDiagnostic = 8
-	SourceDiagnosticCalledAEQualifierNotRecognized             SourceDiagnostic = 9
-	SourceDiagnosticCalledAEInvocationIdentifierNotRecognized  SourceDiagnostic = 10
-	SourceDiagnosticAuthenticationMechanismNameNotRecognized   SourceDiagnostic = 11
-	SourceDiagnosticAuthenticationMechanismNameRequired        SourceDiagnostic = 12
-	SourceDiagnosticAuthenticationFailure                      SourceDiagnostic = 13
-	SourceDiagnosticAuthenticationRequired                     SourceDiagnostic = 14
+	"github.com/cybroslabs/libdlms-go/base"
 )
 
 type initiateResponse struct {
@@ -70,114 +44,46 @@ type confirmedServiceError struct {
 	Value                 byte
 }
 
-type ApplicationContext byte
-
-// Application context definitions
-const (
-	ApplicationContextLNNoCiphering ApplicationContext = 1
-	ApplicationContextSNNoCiphering ApplicationContext = 2
-	ApplicationContextLNCiphering   ApplicationContext = 3
-	ApplicationContextSNCiphering   ApplicationContext = 4
-)
-
-const (
-	PduTypeProtocolVersion            = 0
-	PduTypeApplicationContextName     = 1
-	PduTypeCalledAPTitle              = 2
-	PduTypeCalledAEQualifier          = 3
-	PduTypeCalledAPInvocationID       = 4
-	PduTypeCalledAEInvocationID       = 5
-	PduTypeCallingAPTitle             = 6
-	PduTypeCallingAEQualifier         = 7
-	PduTypeCallingAPInvocationID      = 8
-	PduTypeCallingAEInvocationID      = 9
-	PduTypeSenderAcseRequirements     = 10
-	PduTypeMechanismName              = 11
-	PduTypeCallingAuthenticationValue = 12
-	PduTypeImplementationInformation  = 29
-	PduTypeUserInformation            = 30
-)
-
-const (
-	BERTypeContext     = 0x80
-	BERTypeApplication = 0x40
-	BERTypeConstructed = 0x20
-)
-
-// Conformance block
-const (
-	ConformanceBlockReservedZero         = 0b100000000000000000000000
-	ConformanceBlockGeneralProtection    = 0b010000000000000000000000
-	ConformanceBlockGeneralBlockTransfer = 0b001000000000000000000000
-	ConformanceBlockRead                 = 0b000100000000000000000000
-
-	ConformanceBlockWrite            = 0b000010000000000000000000
-	ConformanceBlockUnconfirmedWrite = 0b000001000000000000000000
-	ConformanceBlockReservedSix      = 0b000000100000000000000000
-	ConformanceBlockReservedSeven    = 0b000000010000000000000000
-
-	ConformanceBlockAttribute0SupportedWithSet = 0b000000001000000000000000
-	ConformanceBlockPriorityMgmtSupported      = 0b000000000100000000000000
-	ConformanceBlockAttribute0SupportedWithGet = 0b000000000010000000000000
-	ConformanceBlockBlockTransferWithGetOrRead = 0b000000000001000000000000
-
-	ConformanceBlockBlockTransferWithSetOrWrite = 0b000000000000100000000000
-	ConformanceBlockBlockTransferWithAction     = 0b000000000000010000000000
-	ConformanceBlockMultipleReferences          = 0b000000000000001000000000
-	ConformanceBlockInformationReport           = 0b000000000000000100000000
-
-	ConformanceBlockDataNotification   = 0b000000000000000010000000
-	ConformanceBlockAccess             = 0b000000000000000001000000
-	ConformanceBlockParametrizedAccess = 0b000000000000000000100000
-	ConformanceBlockGet                = 0b000000000000000000010000
-
-	ConformanceBlockSet               = 0b000000000000000000001000
-	ConformanceBlockSelectiveAccess   = 0b000000000000000000000100
-	ConformanceBlockEventNotification = 0b000000000000000000000010
-	ConformanceBlockAction            = 0b000000000000000000000001
-)
-
 type aaretag struct {
 	tag  byte
 	data []byte
 }
 
 type aaResponse struct {
-	applicationContextName ApplicationContext
-	associationResult      AssociationResult
-	sourceDiagnostic       SourceDiagnostic
-	systemTitle            []byte
+	applicationContextName base.ApplicationContext
+	associationResult      base.AssociationResult
+	sourceDiagnostic       base.SourceDiagnostic
 	initiateResponse       *initiateResponse
 	confirmedServiceError  *confirmedServiceError
 }
 
 func putappctxname(dst *bytes.Buffer, settings *DlmsSettings) {
 	// not so exactly correct things, but for speed sake
-	dst.WriteByte(BERTypeContext | BERTypeConstructed | PduTypeApplicationContextName)
+	dst.WriteByte(base.BERTypeContext | base.BERTypeConstructed | base.PduTypeApplicationContextName)
 	dst.Write([]byte{0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01})
 	dst.WriteByte(byte(settings.applicationContext))
 }
 
 func putmechname(dst *bytes.Buffer, settings *DlmsSettings) {
-	if settings.authentication == AuthenticationNone {
+	if settings.authentication == base.AuthenticationNone {
 		return
 	}
-	dst.WriteByte(BERTypeContext | PduTypeMechanismName)
+	dst.WriteByte(base.BERTypeContext | base.PduTypeMechanismName)
 	dst.Write([]byte{0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x02})
 	dst.WriteByte(byte(settings.authentication))
 }
 
 func putsecvalues(dst *bytes.Buffer, settings *DlmsSettings) {
-	if settings.authentication == AuthenticationNone {
+	if settings.authentication == base.AuthenticationNone {
 		return
 	}
-	encodetag2(dst, BERTypeContext|BERTypeConstructed|PduTypeCallingAuthenticationValue, 0x80, settings.password)
+	encodetag2(dst, base.BERTypeContext|base.BERTypeConstructed|base.PduTypeCallingAuthenticationValue, 0x80, settings.password)
 }
 
 func putsystitle(dst *bytes.Buffer, settings *DlmsSettings) {
 	switch settings.authentication {
-	case AuthenticationHighGmac:
-		encodetag2(dst, BERTypeContext|BERTypeConstructed|PduTypeCallingAPTitle, 0x04, settings.systemtitle)
+	case base.AuthenticationHighGmac:
+		encodetag2(dst, base.BERTypeContext|base.BERTypeConstructed|base.PduTypeCallingAPTitle, 0x04, settings.systemtitle)
 	}
 }
 
@@ -210,10 +116,10 @@ func (d *dlmsal) createxdlms(dst *bytes.Buffer) (err error) {
 	subxdlms[11] = byte(s.MaxPduRecvSize)
 
 	switch s.authentication {
-	case AuthenticationHighGmac: // encrypt this
-		xdlms, err = d.encryptpacket(byte(TagGloInitiateRequest), xdlms, false)
+	case base.AuthenticationHighGmac: // encrypt this
+		xdlms, err = d.encryptpacket(byte(base.TagGloInitiateRequest), xdlms, false)
 	}
-	encodetag2(dst, BERTypeContext|BERTypeConstructed|PduTypeUserInformation, 0x04, xdlms)
+	encodetag2(dst, base.BERTypeContext|base.BERTypeConstructed|base.PduTypeUserInformation, 0x04, xdlms)
 	return
 }
 
@@ -224,8 +130,8 @@ func (d *dlmsal) encodeaarq() (out []byte, outnosec []byte, err error) {
 
 	putappctxname(&content, s)
 	putsystitle(&content, s)
-	if s.authentication != AuthenticationNone {
-		encodetag(&content, BERTypeContext|PduTypeSenderAcseRequirements, []byte{0x07, 0x80})
+	if s.authentication != base.AuthenticationNone {
+		encodetag(&content, base.BERTypeContext|base.PduTypeSenderAcseRequirements, []byte{0x07, 0x80})
 	}
 	putmechname(&content, s)
 	st := content.Len()
@@ -236,7 +142,7 @@ func (d *dlmsal) encodeaarq() (out []byte, outnosec []byte, err error) {
 		return
 	}
 
-	encodetag(&buf, byte(TagAARQ), content.Bytes())
+	encodetag(&buf, byte(base.TagAARQ), content.Bytes())
 	out = buf.Bytes()
 	outnosec = newcopy(out)
 	clear(outnosec[st:en])
@@ -256,7 +162,7 @@ func decodeaare(src []byte, tmp *tmpbuffer) ([]aaretag, error) {
 	return ret, nil
 }
 
-func parseApplicationContextName(tag *aaretag) (out ApplicationContext, err error) {
+func parseApplicationContextName(tag aaretag) (out base.ApplicationContext, err error) {
 	if len(tag.data) != 9 {
 		err = fmt.Errorf("invalid A1 tag length")
 		return
@@ -266,11 +172,11 @@ func parseApplicationContextName(tag *aaretag) (out ApplicationContext, err erro
 		err = fmt.Errorf("invalid A1 tag content")
 		return
 	}
-	out = ApplicationContext(tag.data[8])
+	out = base.ApplicationContext(tag.data[8])
 	return
 }
 
-func parseAssociationResult(tag *aaretag) (out AssociationResult, err error) {
+func parseAssociationResult(tag aaretag) (out base.AssociationResult, err error) {
 	if len(tag.data) != 3 {
 		err = fmt.Errorf("invalid A2 tag length")
 		return
@@ -280,11 +186,11 @@ func parseAssociationResult(tag *aaretag) (out AssociationResult, err error) {
 		err = fmt.Errorf("invalid A2 tag content")
 		return
 	}
-	out = AssociationResult(tag.data[2])
+	out = base.AssociationResult(tag.data[2])
 	return
 }
 
-func parseAssociateSourceDiagnostic(tag *aaretag) (out SourceDiagnostic, err error) {
+func parseAssociateSourceDiagnostic(tag aaretag) (out base.SourceDiagnostic, err error) {
 	if len(tag.data) != 5 {
 		err = fmt.Errorf("invalid A3 tag length")
 		return
@@ -294,11 +200,11 @@ func parseAssociateSourceDiagnostic(tag *aaretag) (out SourceDiagnostic, err err
 		err = fmt.Errorf("invalid A3 tag content")
 		return
 	}
-	out = SourceDiagnostic(tag.data[4])
+	out = base.SourceDiagnostic(tag.data[4])
 	return
 }
 
-func parseAPTitle(tag *aaretag, tmp *tmpbuffer) (out []byte, err error) {
+func parseAPTitle(tag aaretag, tmp *tmpbuffer) (out []byte, err error) {
 	if len(tag.data) < 2 {
 		return nil, fmt.Errorf("invalid A4 tag length")
 	}
@@ -313,7 +219,7 @@ func parseAPTitle(tag *aaretag, tmp *tmpbuffer) (out []byte, err error) {
 	return
 }
 
-func parseSenderAcseRequirements(tag *aaretag, tmp *tmpbuffer) (stoc []byte, err error) {
+func parseSenderAcseRequirements(tag aaretag, tmp *tmpbuffer) (stoc []byte, err error) {
 	if len(tag.data) < 2 {
 		return nil, fmt.Errorf("invalid AA tag length")
 	}
@@ -328,7 +234,7 @@ func parseSenderAcseRequirements(tag *aaretag, tmp *tmpbuffer) (stoc []byte, err
 	return
 }
 
-func (al *dlmsal) parseUserInformation(tag *aaretag) (ir *initiateResponse, cse *confirmedServiceError, err error) {
+func (al *dlmsal) parseUserInformation(tag aaretag) (ir *initiateResponse, cse *confirmedServiceError, err error) {
 	if len(tag.data) < 6 {
 		err = fmt.Errorf("invalid BE tag length")
 		return
@@ -344,18 +250,18 @@ func (al *dlmsal) parseUserInformation(tag *aaretag) (ir *initiateResponse, cse 
 }
 
 func (al *dlmsal) parseUserInformationtag(d []byte) (ir *initiateResponse, cse *confirmedServiceError, err error) {
-	if d[0] == byte(TagInitiateResponse) {
+	if d[0] == byte(base.TagInitiateResponse) {
 		iir, err := decodeInitiateResponse(d[1:])
 		return &iir, nil, err
 	}
-	if d[0] == byte(TagConfirmedServiceError) {
+	if d[0] == byte(base.TagConfirmedServiceError) {
 		cse, err := decodeConfirmedServiceError(d[1:])
 		return nil, &cse, err
 	}
-	if d[0] == byte(TagGloConfirmedServiceError) { // artifical service error for now, not decoding inside of it
+	if d[0] == byte(base.TagGloConfirmedServiceError) { // artifical service error for now, not decoding inside of it
 		return nil, nil, fmt.Errorf("TagGloConfirmedServiceError returned")
 	}
-	if d[0] == byte(TagGloInitiateResponse) {
+	if d[0] == byte(base.TagGloInitiateResponse) {
 		s := al.settings
 		if s.gcm == nil {
 			return nil, nil, fmt.Errorf("GCM not initialized")
@@ -398,7 +304,7 @@ func decodeInitiateResponse(src []byte) (out initiateResponse, err error) {
 		src = src[1:]
 	}
 
-	if src[0] != DlmsVersion {
+	if src[0] != base.DlmsVersion {
 		err = fmt.Errorf("wrong dlms version")
 		return
 	}

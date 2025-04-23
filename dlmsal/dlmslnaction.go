@@ -43,7 +43,7 @@ func (ln *dlmsalaction) action(item DlmsLNRequestItem) (data *DlmsData, err erro
 	master := ln.master
 	local := &master.pdu
 	local.Reset()
-	local.WriteByte(byte(TagActionRequest))
+	local.WriteByte(byte(base.TagActionRequest))
 	local.WriteByte(byte(TagActionRequestNormal))
 	master.invokeid = (master.invokeid + 1) & 7
 	local.WriteByte(master.invokeid | master.settings.invokebyte)
@@ -63,13 +63,13 @@ func (ln *dlmsalaction) action(item DlmsLNRequestItem) (data *DlmsData, err erro
 	return ln.actiondata(tag)
 }
 
-func (ln *dlmsalaction) actiondata(tag CosemTag) (data *DlmsData, err error) {
+func (ln *dlmsalaction) actiondata(tag base.CosemTag) (data *DlmsData, err error) {
 	master := ln.master
 	switch ln.state {
 	case 0: // read first things as a response
 		switch tag {
-		case TagActionResponse:
-		case TagExceptionResponse: // no lower layer readout
+		case base.TagActionResponse:
+		case base.TagExceptionResponse: // no lower layer readout
 			ln.state = 100
 			d, err := decodeException(ln.transport, &master.tmpbuffer)
 			return &d, err // dont decode exception pdu
@@ -85,7 +85,7 @@ func (ln *dlmsalaction) actiondata(tag CosemTag) (data *DlmsData, err error) {
 			return data, fmt.Errorf("unexpected invoke id")
 		}
 
-		switch actionResponseTag(master.tmpbuffer[0]) {
+		switch ActionResponseTag(master.tmpbuffer[0]) {
 		case TagActionResponseNormal:
 			// decode data themselves
 			_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
@@ -95,7 +95,7 @@ func (ln *dlmsalaction) actiondata(tag CosemTag) (data *DlmsData, err error) {
 
 			ln.state = 100
 			if master.tmpbuffer[0] != 0 {
-				d := NewDlmsDataError(DlmsResultTag(master.tmpbuffer[0]))
+				d := NewDlmsDataError(base.DlmsResultTag(master.tmpbuffer[0]))
 				return &d, nil
 			}
 
@@ -118,7 +118,7 @@ func (ln *dlmsalaction) actiondata(tag CosemTag) (data *DlmsData, err error) {
 				if err != nil {
 					return
 				}
-				rd := NewDlmsDataError(DlmsResultTag(master.tmpbuffer[0]))
+				rd := NewDlmsDataError(base.DlmsResultTag(master.tmpbuffer[0]))
 				return &rd, nil
 			}
 
@@ -172,7 +172,7 @@ func (ln *dlmsalaction) Read(p []byte) (n int, err error) { // this will go to d
 			// ask for the next block
 			local := &master.pdu
 			local.Reset()
-			local.WriteByte(byte(TagActionRequest))
+			local.WriteByte(byte(base.TagActionRequest))
 			local.WriteByte(byte(TagActionRequestNextPBlock))
 			local.WriteByte(master.invokeid | master.settings.invokebyte)
 			local.WriteByte(byte(ln.blockexp >> 24))
@@ -183,7 +183,7 @@ func (ln *dlmsalaction) Read(p []byte) (n int, err error) { // this will go to d
 			if err != nil {
 				return 0, err
 			}
-			if tag != TagActionResponse {
+			if tag != base.TagActionResponse {
 				return 0, fmt.Errorf("unexpected response tag: %02x", tag)
 			}
 			ln.transport = str

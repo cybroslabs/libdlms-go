@@ -20,7 +20,7 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 	local := &d.pdu
 	// format request into byte slice and send that to unit
 	local.Reset()
-	local.WriteByte(byte(TagReadRequest))
+	local.WriteByte(byte(base.TagReadRequest))
 	encodelength(local, uint(len(items)))
 	for _, item := range items {
 		if item.HasAccess {
@@ -44,7 +44,7 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 		return nil, err
 	}
 
-	if tag != TagReadResponse {
+	if tag != base.TagReadResponse {
 		return nil, fmt.Errorf("unexpected tag: %x", tag)
 	}
 	l, _, err := decodelength(str, &d.tmpbuffer)
@@ -71,7 +71,7 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 			if err != nil {
 				return nil, err
 			}
-			ret[i] = NewDlmsDataError(DlmsResultTag(d.tmpbuffer[0]))
+			ret[i] = NewDlmsDataError(base.DlmsResultTag(d.tmpbuffer[0]))
 		default:
 			return nil, fmt.Errorf("unexpected response tag: %x", d.tmpbuffer[0])
 		}
@@ -88,7 +88,7 @@ func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream,
 	local := &d.pdu
 	// format request into byte slice and send that to unit
 	local.Reset()
-	local.WriteByte(byte(TagReadRequest))
+	local.WriteByte(byte(base.TagReadRequest))
 	encodelength(local, 1)
 	if item.HasAccess {
 		local.WriteByte(4)
@@ -110,7 +110,7 @@ func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream,
 		return nil, err
 	}
 
-	if tag != TagReadResponse {
+	if tag != base.TagReadResponse {
 		return nil, fmt.Errorf("unexpected tag: %x", tag)
 	}
 	l, _, err := decodelength(str, &d.tmpbuffer)
@@ -137,14 +137,14 @@ func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream,
 		if err != nil {
 			return nil, err
 		}
-		return nil, NewDlmsError(DlmsResultTag(d.tmpbuffer[0]))
+		return nil, NewDlmsError(base.DlmsResultTag(d.tmpbuffer[0]))
 	}
 
 	return nil, fmt.Errorf("unexpected response tag: %x", d.tmpbuffer[0])
 }
 
 // write support here
-func (d *dlmsal) Write(items []DlmsSNRequestItem) ([]DlmsResultTag, error) {
+func (d *dlmsal) Write(items []DlmsSNRequestItem) ([]base.DlmsResultTag, error) {
 	if !d.isopen {
 		return nil, base.ErrNotOpened
 	}
@@ -155,7 +155,7 @@ func (d *dlmsal) Write(items []DlmsSNRequestItem) ([]DlmsResultTag, error) {
 
 	local := &d.pdu
 	local.Reset()
-	local.WriteByte(byte(TagWriteRequest))
+	local.WriteByte(byte(base.TagWriteRequest))
 	encodelength(local, uint(len(items)))
 	for _, item := range items {
 		if item.HasAccess {
@@ -185,7 +185,7 @@ func (d *dlmsal) Write(items []DlmsSNRequestItem) ([]DlmsResultTag, error) {
 	if err != nil {
 		return nil, err
 	}
-	if tag != TagWriteResponse {
+	if tag != base.TagWriteResponse {
 		return nil, fmt.Errorf("unexpected tag: %x", tag)
 	}
 
@@ -196,7 +196,7 @@ func (d *dlmsal) Write(items []DlmsSNRequestItem) ([]DlmsResultTag, error) {
 	if l != uint(len(items)) {
 		return nil, fmt.Errorf("different amount of data received")
 	}
-	ret := make([]DlmsResultTag, len(items))
+	ret := make([]base.DlmsResultTag, len(items))
 	for i := 0; i < len(ret); i++ {
 		_, err = io.ReadFull(str, d.tmpbuffer[:1])
 		if err != nil {
@@ -204,16 +204,16 @@ func (d *dlmsal) Write(items []DlmsSNRequestItem) ([]DlmsResultTag, error) {
 		}
 		switch d.tmpbuffer[0] {
 		case 0:
-			ret[i] = TagResultSuccess
+			ret[i] = base.TagResultSuccess
 		case 1:
 			_, err = io.ReadFull(str, d.tmpbuffer[:1])
 			if err != nil {
 				return nil, err
 			}
 			if d.tmpbuffer[0] == 0 {
-				ret[i] = TagResultOtherReason
+				ret[i] = base.TagResultOtherReason
 			} else {
-				ret[i] = DlmsResultTag(d.tmpbuffer[0])
+				ret[i] = base.DlmsResultTag(d.tmpbuffer[0])
 			}
 		default:
 			return nil, fmt.Errorf("unexpected write response item: %x", d.tmpbuffer[0])
