@@ -11,9 +11,9 @@ import (
 type streamItemType byte
 
 const (
-	streamElementStart streamItemType = iota
-	streamElementEnd
-	streamElementData
+	StreamElementStart streamItemType = iota
+	StreamElementEnd
+	StreamElementData
 )
 
 type DlmsDataStreamItem struct {
@@ -101,7 +101,7 @@ func (d *datastream) NextElement() (*DlmsDataStreamItem, error) {
 			return nil, io.EOF
 		}
 		d.stack[len(d.stack)-1].items--
-		return &DlmsDataStreamItem{Type: streamElementEnd, Data: DlmsData{Tag: tag}}, nil
+		return &DlmsDataStreamItem{Type: StreamElementEnd, Data: DlmsData{Tag: tag}}, nil
 	}
 
 	_, err := io.ReadFull(d.src, d.buffer[:1])
@@ -124,7 +124,7 @@ func (d *datastream) NextElement() (*DlmsDataStreamItem, error) {
 			return nil, err
 		}
 		d.stack[len(d.stack)-1].items--
-		return &DlmsDataStreamItem{Type: streamElementData, Data: next}, nil
+		return &DlmsDataStreamItem{Type: StreamElementData, Data: next}, nil
 	}
 }
 
@@ -135,7 +135,7 @@ func (d *datastream) arrayElement(t dataTag) (*DlmsDataStreamItem, error) {
 		return nil, err
 	}
 	d.stack = append(d.stack, datastreamstate{items: int(l), element: t})
-	return &DlmsDataStreamItem{Type: streamElementStart, Count: int(l), Data: DlmsData{Tag: t}}, nil
+	return &DlmsDataStreamItem{Type: StreamElementStart, Count: int(l), Data: DlmsData{Tag: t}}, nil
 }
 
 func (d *datastream) Close() error { // artifically read out the rest
