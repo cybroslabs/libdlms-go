@@ -118,29 +118,41 @@ func (g *gcmkms) Setup(systemtitleS []byte, stoc []byte) (err error) {
 	return
 }
 
-func (g *gcmkms) Hash(dir GcmDirection, sc byte, fc uint32) ([]byte, error) {
+func (g *gcmkms) Hash(sc byte, fc uint32) ([]byte, error) {
 	err := g.init()
 	if err != nil {
 		return nil, err
 	}
 
-	var d crypto.HashDirection
-	switch dir {
-	case DirectionServerToClient:
-		d = crypto.HashDirection_SERVER_TO_CLIENT
-	case DirectionClientToServer:
-		d = crypto.HashDirection_CLIENT_TO_SERVER
-	default:
-		return nil, fmt.Errorf("invalid direction %v", dir)
-	}
 	return g.sendcmd(crypto.DlmsIn_builder{
 		Hash: crypto.DlmsHash_builder{
-			Direction:       ptr.To(d),
+			Direction:       ptr.To(crypto.HashDirection_CLIENT_TO_SERVER),
 			Mode:            ptr.To(crypto.Hash_HASH_GMAC),
 			FrameCounter:    &fc,
 			SecurityControl: ptr.To(uint32(sc)),
 		}.Build(),
 	}.Build())
+}
+
+func (g *gcmkms) Verify(sc byte, fc uint32, hash []byte) (bool, error) {
+	err := g.init()
+	if err != nil {
+		return false, err
+	}
+
+	_, err = g.sendcmd(crypto.DlmsIn_builder{
+		AuthVerify: crypto.DlmsAuthVerify_builder{
+			Direction:       ptr.To(crypto.HashDirection_SERVER_TO_CLIENT),
+			Mode:            ptr.To(crypto.Hash_HASH_GMAC),
+			FrameCounter:    &fc,
+			SecurityControl: ptr.To(uint32(sc)),
+			Data:            hash,
+		}.Build(),
+	}.Build())
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // Decrypt2 implements Gcm.

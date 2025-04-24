@@ -24,7 +24,8 @@ const (
 
 type Gcm interface { // add length to the streamer interface? add systitle to constructor? not to copy it every damn time
 	Setup(systemtitleS []byte, stoc []byte) error
-	Hash(dir GcmDirection, sc byte, fc uint32) ([]byte, error)
+	Hash(sc byte, fc uint32) ([]byte, error)
+	Verify(sc byte, fc uint32, hash []byte) (bool, error)
 	GetEncryptLength(scControl byte, apdu []byte) (int, error)
 	// ret can be nil in case of not reused, ret and apdu can overlap, but exactly
 	Encrypt(ret []byte, sc byte, fc uint32, apdu []byte) ([]byte, error)
@@ -120,29 +121,26 @@ func (g *gcm) Setup(systemtitleS []byte, stoc []byte) error {
 	return nil
 }
 
-func (g *gcm) Hash(dir GcmDirection, sc byte, fc uint32) ([]byte, error) {
-	switch dir {
-	case DirectionClientToServer:
-		e, err := g.encryptinternal(nil, sc, sc, fc, g.systemtitleC, g.stoc)
-		if err != nil {
-			return nil, err
-		}
-		if len(e) < GCM_TAG_LENGTH { // definitely shouldnt happen
-			return nil, fmt.Errorf("encrypted data too short")
-		}
-		return e[len(e)-GCM_TAG_LENGTH:], nil
-	case DirectionServerToClient:
-		e, err := g.encryptinternal(nil, sc, sc, fc, g.systemtitleS, g.ctos)
-		if err != nil {
-			return nil, err
-		}
-		if len(e) < GCM_TAG_LENGTH { // definitely shouldnt happen
-			return nil, fmt.Errorf("encrypted data too short")
-		}
-		return e[len(e)-GCM_TAG_LENGTH:], nil
-	default:
-		return nil, fmt.Errorf("invalid direction")
+func (g *gcm) Hash(sc byte, fc uint32) ([]byte, error) {
+	e, err := g.encryptinternal(nil, sc, sc, fc, g.systemtitleC, g.stoc)
+	if err != nil {
+		return nil, err
 	}
+	if len(e) < GCM_TAG_LENGTH { // definitely shouldnt happen
+		return nil, fmt.Errorf("encrypted data too short")
+	}
+	return e[len(e)-GCM_TAG_LENGTH:], nil
+}
+
+func (g *gcm) Verify(sc byte, fc uint32, hash []byte) (bool, error) {
+	e, err := g.encryptinternal(nil, sc, sc, fc, g.systemtitleS, g.ctos)
+	if err != nil {
+		return false, err
+	}
+	if len(e) < GCM_TAG_LENGTH { // definitely shouldnt happen
+		return false, fmt.Errorf("encrypted data too short")
+	}
+	return bytes.Equal(e[len(e)-GCM_TAG_LENGTH:], hash), nil
 }
 
 func (g *gcm) Decrypt(ret []byte, sc byte, fc uint32, apdu []byte) ([]byte, error) {

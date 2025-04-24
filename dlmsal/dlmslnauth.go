@@ -1,7 +1,6 @@
 package dlmsal
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 
@@ -29,7 +28,7 @@ func (d *dlmsal) LNAuthentication(checkresp bool) error {
 		return fmt.Errorf("no gcm set for ciphering")
 	}
 	// create ctos hash
-	e, err := s.gcm.Hash(gcm.DirectionClientToServer, byte(base.SecurityAuthentication), s.framecounter)
+	e, err := s.gcm.Hash(byte(base.SecurityAuthentication), s.framecounter)
 	if err != nil {
 		return err
 	}
@@ -71,14 +70,13 @@ func (d *dlmsal) LNAuthentication(checkresp bool) error {
 	if len(aresp) != 5+gcm.GCM_TAG_LENGTH || aresp[0] != byte(base.SecurityAuthentication) {
 		return fmt.Errorf("invalid stoc hash response")
 	}
-	r, err := s.gcm.Hash(gcm.DirectionServerToClient, aresp[0], binary.BigEndian.Uint32(aresp[1:]))
+	r, err := s.gcm.Verify(aresp[0], binary.BigEndian.Uint32(aresp[1:]), aresp[5:])
 	if err != nil {
 		return err
 	}
 
-	if bytes.Equal(aresp[5:], r) {
-		return nil
+	if !r {
+		return fmt.Errorf("returned hash mismatch")
 	}
-
-	return fmt.Errorf("returned hash mismatch")
+	return nil
 }
