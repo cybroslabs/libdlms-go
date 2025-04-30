@@ -176,31 +176,14 @@ M:
 				v.nodes[stringext].down = v.lastcode
 				v.lastcode++
 			}
+			stringext = 0
+			off = 0
 		}
-		stringext = 0
-		off = 0
 
 		// try to find the longest match
-		r := v.root[b]
-		if r == 0 { // not even in the dictionary, emit ordinal
-			v.emitordinal(b)
-			if v.lastcode < maxcodeword {
-				v.nodes = append(v.nodes, v44node{
-					pos:    ii + 1, // next possible extension
-					length: 1,
-				})
-				v.root[b] = v.lastcode
-				v.lastcode++
-			}
-			continue M
-		}
+		sid := v.root[b]
 		// find the longest match, just linear search, try first level, if it is not found, then double ordinal should be trasnferred
 		rem := int32(len(v.history)) - ii - 1
-		if rem == 0 {
-			v.emitordinal(b)
-			break M // game over anyway
-		}
-		sid := r
 		lastmatch := int16(0)
 		slen = 1
 		for sid != 0 {
@@ -271,13 +254,16 @@ func Compress(input []byte) []byte {
 }
 
 func (v *v44ctx) readbit() (b byte) {
-	b |= v.input[0] & 1
-	v.input[0] >>= 1
+	b = v.tmp & 1
+	v.tmp >>= 1
 	v.bitoffset++
 	v.inputbits--
 	if v.bitoffset == 8 {
-		v.input = v.input[1:]
 		v.bitoffset = 0
+		if len(v.input) > 1 {
+			v.input = v.input[1:]
+			v.tmp = v.input[0]
+		}
 	}
 	return
 }
@@ -539,5 +525,9 @@ func Decompress(input []byte) ([]byte, error) {
 		nodes:     make([]v44node, 4),
 	}
 	// empty array is not possible as at least flush control code has to be here
+	if len(input) == 0 {
+		return nil, fmt.Errorf("empty input")
+	}
+	ctx.tmp = input[0]
 	return ctx.decompress()
 }
