@@ -90,7 +90,7 @@ func decodeDataArray(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data Dlm
 		return data, 0, err
 	}
 	d := make([]DlmsData, l)
-	for i := 0; i < int(l); i++ {
+	for i := range l {
 		d[i], ii, err = decodeDataTag(src, tmpbuffer)
 		if err != nil {
 			return data, 0, err
@@ -134,8 +134,8 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 			val := make([]bool, l)
 			off := uint(0)
 		E:
-			for i := uint(0); i < blen; i++ {
-				for j := uint(0); j < 8; j++ {
+			for i := range blen {
+				for j := range uint(8) {
 					val[off] = (tmp[i] & (1 << (7 - j))) != 0
 					off++
 					if off >= l {
@@ -280,7 +280,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 					return data, 0, fmt.Errorf("too short data for compact array (number of structure items), %w", err)
 				}
 				types = make([]dataTag, l)
-				for i := 0; i < int(l); i++ {
+				for i := range l {
 					types[i] = dataTag(tmp[i])
 				}
 				n += int(l)
@@ -322,7 +322,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 			for rem > 0 {
 				if ctag == TagStructure { // artifical structure with len(types) items
 					str := make([]DlmsData, len(types))
-					for i := 0; i < len(types); i++ {
+					for i := range types {
 						if rem <= 0 {
 							return data, 0, fmt.Errorf("there are no bytes left for another structure item")
 						}
@@ -548,16 +548,6 @@ func encodeCompactArray(out *bytes.Buffer, d *DlmsData) (err error) {
 	}
 
 	// well... shit, all things has to have the same type and in case of structure, this could be fun, in case of zero items, well... fuck, special structure for this?
-	if len(input.value) == 0 { // nothing, so not interesting in anything, encopde it as a zero empty structures
-		out.WriteByte(byte(input.tag))
-		if input.tag == TagStructure {
-			encodelength(out, uint(len(input.tags)))
-			for _, tt := range input.tags {
-				out.WriteByte(byte(tt))
-			}
-		}
-		out.WriteByte(0) // zero bytes, this is very questionable, at least not so used data type, things for some future
-	}
 	for _, t := range input.value {
 		if t.Tag != input.tag {
 			return fmt.Errorf("data tag differs, unable to perform encoding compact array")
@@ -588,7 +578,7 @@ func encodeCompactArray(out *bytes.Buffer, d *DlmsData) (err error) {
 		}
 	}
 	if on {
-		return fmt.Errorf("unable to decode compact array with all null types")
+		return fmt.Errorf("unable to encode compact array with all null types")
 	}
 
 	// ok, having everything, encode that shit, really clusterfuck thing
