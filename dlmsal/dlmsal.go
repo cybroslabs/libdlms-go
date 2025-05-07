@@ -68,18 +68,19 @@ type dlmsal struct {
 }
 
 type DlmsSettings struct {
-	ConformanceBlock          uint32
-	MaxPduRecvSize            int
-	VAAddress                 int16
-	HighPriority              bool
-	ConfirmedRequests         bool
-	EmptyRLRQ                 bool
-	Security                  base.DlmsSecurity
-	StoC                      []byte
-	SourceDiagnostic          base.SourceDiagnostic
-	ServerSystemTitle         []byte
-	AuthenticationMechanismId base.Authentication
-	ApplicationContext        base.ApplicationContext
+	ConformanceBlock           uint32
+	MaxPduRecvSize             int
+	VAAddress                  int16
+	HighPriority               bool
+	ConfirmedRequests          bool
+	EmptyRLRQ                  bool
+	Security                   base.DlmsSecurity
+	StoC                       []byte
+	SourceDiagnostic           base.SourceDiagnostic
+	ServerSystemTitle          []byte
+	AuthenticationMechanismId  base.Authentication
+	ApplicationContext         base.ApplicationContext
+	DontEncryptUserInformation bool
 
 	// private part
 	ctos         []byte

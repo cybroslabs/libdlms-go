@@ -115,9 +115,11 @@ func (d *dlmsal) createxdlms(dst *bytes.Buffer) (err error) {
 	subxdlms[10] = byte(s.MaxPduRecvSize >> 8) // no limit in maximum received apdu length
 	subxdlms[11] = byte(s.MaxPduRecvSize)
 
-	switch s.AuthenticationMechanismId {
-	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa: // encrypt this
-		xdlms, err = d.encryptpacket(byte(base.TagGloInitiateRequest), xdlms, false)
+	if !d.settings.DontEncryptUserInformation {
+		switch s.AuthenticationMechanismId {
+		case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa: // encrypt this
+			xdlms, err = d.encryptpacket(byte(base.TagGloInitiateRequest), xdlms, false)
+		}
 	}
 	encodetag2(dst, base.BERTypeContext|base.BERTypeConstructed|base.PduTypeUserInformation, 0x04, xdlms)
 	return
