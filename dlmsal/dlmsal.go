@@ -79,17 +79,17 @@ type DlmsSettings struct {
 	SourceDiagnostic          base.SourceDiagnostic
 	ServerSystemTitle         []byte
 	AuthenticationMechanismId base.Authentication
+	ApplicationContext        base.ApplicationContext
 
 	// private part
-	ctos               []byte
-	invokebyte         byte
-	applicationContext base.ApplicationContext
-	password           []byte
-	gcm                gcm.Gcm
-	systemtitle        []byte
-	framecounter       uint32
-	dedgcm             gcm.Gcm
-	dedicatedkey       []byte
+	ctos         []byte
+	invokebyte   byte
+	password     []byte
+	gcm          gcm.Gcm
+	systemtitle  []byte
+	framecounter uint32
+	dedgcm       gcm.Gcm
+	dedicatedkey []byte
 }
 
 func (d *DlmsSettings) SetDedicatedKey(key []byte, g gcm.Gcm) {
@@ -107,7 +107,7 @@ func NewSettingsWithLowAuthenticationSN(password string) (*DlmsSettings, error) 
 	}
 	return &DlmsSettings{
 		AuthenticationMechanismId: base.AuthenticationLow,
-		applicationContext:        base.ApplicationContextSNNoCiphering,
+		ApplicationContext:        base.ApplicationContextSNNoCiphering,
 		password:                  []byte(password),
 		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
 			base.ConformanceBlockRead | base.ConformanceBlockWrite | base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences,
@@ -120,7 +120,7 @@ func NewSettingsWithLowAuthenticationLN(password string) (*DlmsSettings, error) 
 	}
 	return &DlmsSettings{
 		AuthenticationMechanismId: base.AuthenticationLow,
-		applicationContext:        base.ApplicationContextLNNoCiphering,
+		ApplicationContext:        base.ApplicationContextLNNoCiphering,
 		password:                  []byte(password),
 		HighPriority:              true,
 		ConfirmedRequests:         true,
@@ -133,7 +133,7 @@ func NewSettingsWithLowAuthenticationLN(password string) (*DlmsSettings, error) 
 func NewSettingsNoAuthenticationLN() (*DlmsSettings, error) {
 	return &DlmsSettings{
 		AuthenticationMechanismId: base.AuthenticationNone,
-		applicationContext:        base.ApplicationContextLNNoCiphering,
+		ApplicationContext:        base.ApplicationContextLNNoCiphering,
 		HighPriority:              true,
 		ConfirmedRequests:         true,
 		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
@@ -151,7 +151,7 @@ func NewSettingsWithGmacLN(systemtitle []byte, g gcm.Gcm, ctoshash []byte, fc ui
 	}
 	ret := DlmsSettings{
 		AuthenticationMechanismId: base.AuthenticationHighGmac,
-		applicationContext:        base.ApplicationContextLNCiphering,
+		ApplicationContext:        base.ApplicationContextLNCiphering,
 		HighPriority:              true,
 		ConfirmedRequests:         true,
 		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
@@ -354,8 +354,8 @@ func (d *dlmsal) Open() error { // login and shits
 	if d.aareres.confirmedServiceError != nil {
 		return fmt.Errorf("confirmed service error: %v", d.aareres.confirmedServiceError.ConfirmedServiceError)
 	}
-	if d.aareres.applicationContextName != d.settings.applicationContext {
-		return fmt.Errorf("application contextes differ: %v != %v", d.aareres.applicationContextName, d.settings.applicationContext)
+	if d.aareres.applicationContextName != d.settings.ApplicationContext {
+		return fmt.Errorf("application contextes differ: %v != %v", d.aareres.applicationContextName, d.settings.ApplicationContext)
 	}
 	if d.aareres.associationResult != base.AssociationResultAccepted {
 		return fmt.Errorf("login failed: %v", d.aareres.associationResult)

@@ -61,7 +61,7 @@ func putappctxname(dst *bytes.Buffer, settings *DlmsSettings) {
 	// not so exactly correct things, but for speed sake
 	dst.WriteByte(base.BERTypeContext | base.BERTypeConstructed | base.PduTypeApplicationContextName)
 	dst.Write([]byte{0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01})
-	dst.WriteByte(byte(settings.applicationContext))
+	dst.WriteByte(byte(settings.ApplicationContext))
 }
 
 func putmechname(dst *bytes.Buffer, settings *DlmsSettings) {
@@ -91,7 +91,7 @@ func (d *dlmsal) createxdlms(dst *bytes.Buffer) (err error) {
 	s := d.settings
 	var xdlms []byte
 	var subxdlms []byte
-	if s.dedgcm != nil {
+	if s.gcm != nil {
 		xdlms = make([]byte, 15+len(s.dedicatedkey))
 		xdlms[0] = 0x01
 		xdlms[1] = 0x01
