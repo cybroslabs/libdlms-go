@@ -91,7 +91,7 @@ func (d *dlmsal) createxdlms(dst *bytes.Buffer) (err error) {
 	s := d.settings
 	var xdlms []byte
 	var subxdlms []byte
-	if s.gcm != nil {
+	if s.dedgcm != nil {
 		xdlms = make([]byte, 15+len(s.dedicatedkey))
 		xdlms[0] = 0x01
 		xdlms[1] = 0x01
@@ -116,7 +116,7 @@ func (d *dlmsal) createxdlms(dst *bytes.Buffer) (err error) {
 	subxdlms[11] = byte(s.MaxPduRecvSize)
 
 	switch s.AuthenticationMechanismId {
-	case base.AuthenticationHighGmac: // encrypt this
+	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa: // encrypt this
 		xdlms, err = d.encryptpacket(byte(base.TagGloInitiateRequest), xdlms, false)
 	}
 	encodetag2(dst, base.BERTypeContext|base.BERTypeConstructed|base.PduTypeUserInformation, 0x04, xdlms)
