@@ -65,23 +65,23 @@ func putappctxname(dst *bytes.Buffer, settings *DlmsSettings) {
 }
 
 func putmechname(dst *bytes.Buffer, settings *DlmsSettings) {
-	if settings.authentication == base.AuthenticationNone {
+	if settings.AuthenticationMechanismId == base.AuthenticationNone {
 		return
 	}
 	dst.WriteByte(base.BERTypeContext | base.PduTypeMechanismName)
 	dst.Write([]byte{0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x02})
-	dst.WriteByte(byte(settings.authentication))
+	dst.WriteByte(byte(settings.AuthenticationMechanismId))
 }
 
 func putsecvalues(dst *bytes.Buffer, settings *DlmsSettings) {
-	if settings.authentication == base.AuthenticationNone {
+	if settings.AuthenticationMechanismId == base.AuthenticationNone {
 		return
 	}
 	encodetag2(dst, base.BERTypeContext|base.BERTypeConstructed|base.PduTypeCallingAuthenticationValue, 0x80, settings.password)
 }
 
 func putsystitle(dst *bytes.Buffer, settings *DlmsSettings) {
-	switch settings.authentication {
+	switch settings.AuthenticationMechanismId {
 	case base.AuthenticationHighGmac:
 		encodetag2(dst, base.BERTypeContext|base.BERTypeConstructed|base.PduTypeCallingAPTitle, 0x04, settings.systemtitle)
 	}
@@ -115,7 +115,7 @@ func (d *dlmsal) createxdlms(dst *bytes.Buffer) (err error) {
 	subxdlms[10] = byte(s.MaxPduRecvSize >> 8) // no limit in maximum received apdu length
 	subxdlms[11] = byte(s.MaxPduRecvSize)
 
-	switch s.authentication {
+	switch s.AuthenticationMechanismId {
 	case base.AuthenticationHighGmac: // encrypt this
 		xdlms, err = d.encryptpacket(byte(base.TagGloInitiateRequest), xdlms, false)
 	}
@@ -130,7 +130,7 @@ func (d *dlmsal) encodeaarq() (out []byte, outnosec []byte, err error) {
 
 	putappctxname(&content, s)
 	putsystitle(&content, s)
-	if s.authentication != base.AuthenticationNone {
+	if s.AuthenticationMechanismId != base.AuthenticationNone {
 		encodetag(&content, base.BERTypeContext|base.PduTypeSenderAcseRequirements, []byte{0x07, 0x80})
 	}
 	putmechname(&content, s)

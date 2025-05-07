@@ -68,21 +68,21 @@ type dlmsal struct {
 }
 
 type DlmsSettings struct {
-	ConformanceBlock  uint32
-	MaxPduRecvSize    int
-	VAAddress         int16
-	HighPriority      bool
-	ConfirmedRequests bool
-	EmptyRLRQ         bool
-	Security          base.DlmsSecurity
-	StoC              []byte
-	SourceDiagnostic  base.SourceDiagnostic
-	ServerSystemTitle []byte
+	ConformanceBlock          uint32
+	MaxPduRecvSize            int
+	VAAddress                 int16
+	HighPriority              bool
+	ConfirmedRequests         bool
+	EmptyRLRQ                 bool
+	Security                  base.DlmsSecurity
+	StoC                      []byte
+	SourceDiagnostic          base.SourceDiagnostic
+	ServerSystemTitle         []byte
+	AuthenticationMechanismId base.Authentication
 
 	// private part
 	ctos               []byte
 	invokebyte         byte
-	authentication     base.Authentication
 	applicationContext base.ApplicationContext
 	password           []byte
 	gcm                gcm.Gcm
@@ -106,9 +106,9 @@ func NewSettingsWithLowAuthenticationSN(password string) (*DlmsSettings, error) 
 		return nil, fmt.Errorf("password is empty")
 	}
 	return &DlmsSettings{
-		authentication:     base.AuthenticationLow,
-		applicationContext: base.ApplicationContextSNNoCiphering,
-		password:           []byte(password),
+		AuthenticationMechanismId: base.AuthenticationLow,
+		applicationContext:        base.ApplicationContextSNNoCiphering,
+		password:                  []byte(password),
 		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
 			base.ConformanceBlockRead | base.ConformanceBlockWrite | base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences,
 	}, nil
@@ -119,11 +119,11 @@ func NewSettingsWithLowAuthenticationLN(password string) (*DlmsSettings, error) 
 		return nil, fmt.Errorf("password is empty")
 	}
 	return &DlmsSettings{
-		authentication:     base.AuthenticationLow,
-		applicationContext: base.ApplicationContextLNNoCiphering,
-		password:           []byte(password),
-		HighPriority:       true,
-		ConfirmedRequests:  true,
+		AuthenticationMechanismId: base.AuthenticationLow,
+		applicationContext:        base.ApplicationContextLNNoCiphering,
+		password:                  []byte(password),
+		HighPriority:              true,
+		ConfirmedRequests:         true,
 		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
 			base.ConformanceBlockBlockTransferWithAction | base.ConformanceBlockAction | base.ConformanceBlockGet | base.ConformanceBlockSet |
 			base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences | base.ConformanceBlockAttribute0SupportedWithGet,
@@ -132,10 +132,10 @@ func NewSettingsWithLowAuthenticationLN(password string) (*DlmsSettings, error) 
 
 func NewSettingsNoAuthenticationLN() (*DlmsSettings, error) {
 	return &DlmsSettings{
-		authentication:     base.AuthenticationNone,
-		applicationContext: base.ApplicationContextLNNoCiphering,
-		HighPriority:       true,
-		ConfirmedRequests:  true,
+		AuthenticationMechanismId: base.AuthenticationNone,
+		applicationContext:        base.ApplicationContextLNNoCiphering,
+		HighPriority:              true,
+		ConfirmedRequests:         true,
 		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
 			base.ConformanceBlockBlockTransferWithAction | base.ConformanceBlockAction | base.ConformanceBlockGet | base.ConformanceBlockSet |
 			base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences | base.ConformanceBlockAttribute0SupportedWithGet,
@@ -150,10 +150,10 @@ func NewSettingsWithGmacLN(systemtitle []byte, g gcm.Gcm, ctoshash []byte, fc ui
 		return nil, fmt.Errorf("ctoshash is empty")
 	}
 	ret := DlmsSettings{
-		authentication:     base.AuthenticationHighGmac,
-		applicationContext: base.ApplicationContextLNCiphering,
-		HighPriority:       true,
-		ConfirmedRequests:  true,
+		AuthenticationMechanismId: base.AuthenticationHighGmac,
+		applicationContext:        base.ApplicationContextLNCiphering,
+		HighPriority:              true,
+		ConfirmedRequests:         true,
 		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
 			base.ConformanceBlockBlockTransferWithAction | base.ConformanceBlockAction | base.ConformanceBlockGet | base.ConformanceBlockSet |
 			base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences | base.ConformanceBlockAttribute0SupportedWithGet |
@@ -244,7 +244,7 @@ func (d *dlmsal) smallreadout() ([]byte, error) {
 }
 
 func (d *dlmsal) logstate(st bool) bool {
-	switch d.settings.authentication {
+	switch d.settings.AuthenticationMechanismId {
 	case base.AuthenticationLow:
 		if st {
 			d.transport.SetLogger(d.logger)
