@@ -94,7 +94,7 @@ func (g *gcmnist) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32
 			return nil, fmt.Errorf("too short ciphered data, no space for tag")
 		}
 		g.aad[0] = scContent
-		return g.nist.Open(ret, g.iv[:], apdu[:len(apdu)-GCM_TAG_LENGTH], g.aad[:])
+		return g.nist.Open(ret[:0], g.iv[:], apdu, g.aad)
 	default:
 		return nil, fmt.Errorf("scControl %02X not supported", scControl)
 	}
@@ -119,7 +119,7 @@ func (g *gcmnist) encryptinternal(ret []byte, scControl byte, scContent byte, fc
 	case 0x10:
 		aad := make([]byte, len(g.aad)+len(apdu))
 		aad[0] = scContent
-		copy(aad[1:], g.aad)
+		copy(aad[1:], g.aad[1:])
 		copy(aad[len(g.aad):], apdu)
 
 		tag := g.nist.Seal(nil, g.iv[:], nil, aad)
