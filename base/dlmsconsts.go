@@ -90,6 +90,20 @@ const (
 	BERTypeConstructed = 0x20
 )
 
+const (
+	StateErrorServiceNotAllower = 0x01
+	StateErrorServiceUnknown    = 0x02
+)
+
+const (
+	ServiceErrorOperationNotPossible   = 0x01
+	ServiceErrorServiceNotSupported    = 0x02
+	ServiceErrorOtherReason            = 0x03
+	ServiceErrorPduTooLong             = 0x04
+	ServiceErrorDecipheringError       = 0x05
+	ServiceErrorInvocationCounterError = 0x06
+)
+
 // Conformance block
 const (
 	ConformanceBlockReservedZero         = 0b100000000000000000000000

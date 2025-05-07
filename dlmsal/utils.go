@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+
+	"github.com/cybroslabs/libdlms-go/base"
 )
 
 func codedlength(len uint) int {
@@ -154,6 +156,13 @@ func decodetag(src []byte, tmp *tmpbuffer) (byte, int, []byte, error) {
 	if len(src) < 2 {
 		return 0, 0, nil, fmt.Errorf("no data available")
 	}
+	if src[0] == byte(base.TagExceptionResponse) { // exception
+		if len(src) < 3 {
+			return 0, 0, nil, fmt.Errorf("no data for exception available")
+		}
+		return 0, 0, nil, fmt.Errorf("exception received: %d/%d", src[1], src[2])
+	}
+
 	tag := src[0]
 	t := bytes.NewBuffer(src[1:])
 	dlen, c, err := decodelength(t, tmp)
