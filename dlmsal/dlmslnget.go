@@ -88,7 +88,7 @@ func (ln *dlmsalget) get(items []DlmsLNRequestItem) ([]DlmsData, error) {
 	// start streaming response
 	ln.data = make([]DlmsData, len(items))
 	var end bool
-	for i := 0; i < len(ln.data); i++ {
+	for i := range ln.data {
 		end, err = ln.getnextdata(tag, i)
 		if err != nil {
 			return nil, err
@@ -188,7 +188,7 @@ func (ln *dlmsalget) getnextdata(tag base.CosemTag, i int) (cont bool, err error
 		case base.TagGetResponse:
 		case base.TagExceptionResponse: // no lower layer readout
 			d, err := decodeException(ln.transport, &master.tmpbuffer)
-			for i := 0; i < len(ln.data); i++ {
+			for i := range ln.data {
 				ln.data[i] = d
 			}
 			ln.state = 100
@@ -243,7 +243,7 @@ func (ln *dlmsalget) getnextdata(tag base.CosemTag, i int) (cont bool, err error
 			if l != uint(len(ln.data)) {
 				return false, fmt.Errorf("different amount of data received")
 			}
-			for i := 0; i < len(ln.data); i++ {
+			for i := range ln.data {
 				_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
 				if err != nil {
 					return false, err

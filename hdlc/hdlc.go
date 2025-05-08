@@ -598,12 +598,12 @@ func mac_crc16(d []byte) uint16 {
 
 func mac_crc16_r(d []byte, ih int) (hcs uint16, fcs uint16) {
 	c := uint16(0xffff)
-	for i := 0; i < ih; i++ {
-		c = fcstab[byte(c)^d[i]] ^ (c >> 8)
+	for _, b := range d[:ih] {
+		c = fcstab[byte(c)^b] ^ (c >> 8)
 	}
 	hcs = c ^ 0xffff
-	for i := ih; i < len(d); i++ {
-		c = fcstab[byte(c)^d[i]] ^ (c >> 8)
+	for _, b := range d[ih:] {
+		c = fcstab[byte(c)^b] ^ (c >> 8)
 	}
 	return hcs, c ^ 0xffff
 }
@@ -819,15 +819,15 @@ func (w *maclayer) getaddresslength() int {
 
 func mac_crc16_w(d []byte, ih int) uint16 {
 	c := uint16(0xffff)
-	for i := 0; i < ih; i++ {
-		c = fcstab[byte(c)^d[i]] ^ (c >> 8)
+	for _, b := range d[:ih] {
+		c = fcstab[byte(c)^b] ^ (c >> 8)
 	}
 	hcs := c ^ 0xffff
 	d[ih] = byte(hcs)
 	d[ih+1] = byte(hcs >> 8)
 
-	for i := ih; i < len(d); i++ {
-		c = fcstab[byte(c)^d[i]] ^ (c >> 8)
+	for _, b := range d[ih:] {
+		c = fcstab[byte(c)^b] ^ (c >> 8)
 	}
 	return c ^ 0xffff
 }

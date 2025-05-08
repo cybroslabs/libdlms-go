@@ -125,7 +125,7 @@ func recaststruct(trg reflect.Value, data *DlmsData) error {
 			return fmt.Errorf("struct has %d fields, but data has %d fields", trg.NumField(), n)
 		}
 
-		for i := 0; i < n; i++ {
+		for i := range n {
 			if trg.Type().Field(i).IsExported() { // fill only exported (public) fields
 				field := trg.Field(i)
 				if field.Kind() == reflect.Pointer {
@@ -174,7 +174,7 @@ func recastslice(trg reflect.Value, data *DlmsData) error {
 		} else {
 			trg.SetLen(len(v))
 		}
-		for i := 0; i < len(v); i++ {
+		for i := range v {
 			vv := trg.Index(i)
 			if vv.Kind() == reflect.Pointer && vv.IsNil() {
 				vv.Set(reflect.New(vv.Type().Elem()))

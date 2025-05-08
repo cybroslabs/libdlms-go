@@ -146,7 +146,7 @@ func decodelength(src io.Reader, tmp *tmpbuffer) (uint, int, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	for i := 0; i < c; i++ {
+	for i := range c {
 		r = (r << 8) | uint(tmp[i])
 	}
 	return r, c + 1, nil

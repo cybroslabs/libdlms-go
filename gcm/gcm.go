@@ -331,7 +331,7 @@ func (g *gcm) GetEncryptLength(scControl byte, apdu []byte) (int, error) {
 func (g *gcm) ghash(x []byte, dst []byte) {
 	tmp := g.tmp[AES_BLOCK_SIZE<<1 : AES_BLOCK_SIZE*3]
 	m := len(x) >> AES_BLOCK_SIZE_ROT
-	for i := 0; i < m; i++ {
+	for range m {
 		xor_block2(tmp, dst, x)
 		x = x[AES_BLOCK_SIZE:]
 		g.gf_mult(tmp, dst)
@@ -436,7 +436,7 @@ func (g *gcm) aes_gcm_gctr_ghash(J0 []byte, S []byte, plain []byte, crypt []byte
 func (g *gcm) aes_gctr_ghash(J0 []byte, x []byte, dst []byte, dsthash []byte) {
 	tmp := g.tmp[AES_BLOCK_SIZE<<1 : AES_BLOCK_SIZE*3]
 	n := len(x) >> AES_BLOCK_SIZE_ROT
-	for i := 0; i < n; i++ { // this part should be streamed
+	for range n { // this part should be streamed
 		g.aes.Encrypt(tmp, J0)
 		xor_block2(dst, tmp, x)
 		xor_block2(tmp, dsthash, dst)
@@ -449,7 +449,7 @@ func (g *gcm) aes_gctr_ghash(J0 []byte, x []byte, dst []byte, dsthash []byte) {
 
 	if len(x) != 0 {
 		g.aes.Encrypt(tmp, J0)
-		for i := 0; i < len(x); i++ {
+		for i := range x {
 			dst[i] = x[i] ^ tmp[i]
 			dsthash[i] ^= dst[i]
 		}
@@ -463,7 +463,7 @@ func (g *gcm) aes_gctr_ghash(J0 []byte, x []byte, dst []byte, dsthash []byte) {
 func (g *gcm) aes_gctr_ghash_de(J0 []byte, x []byte, dst []byte, dsthash []byte) {
 	tmp := g.tmp[AES_BLOCK_SIZE<<1 : AES_BLOCK_SIZE*3]
 	n := len(x) >> AES_BLOCK_SIZE_ROT
-	for i := 0; i < n; i++ { // this part should be streamed
+	for range n { // this part should be streamed
 		g.aes.Encrypt(tmp, J0)
 		xor_block2(dst, tmp, x)
 		xor_block2(tmp, dsthash, x)
@@ -476,7 +476,7 @@ func (g *gcm) aes_gctr_ghash_de(J0 []byte, x []byte, dst []byte, dsthash []byte)
 
 	if len(x) != 0 {
 		g.aes.Encrypt(tmp, J0)
-		for i := 0; i < len(x); i++ {
+		for i := range x {
 			dst[i] = x[i] ^ tmp[i]
 			dsthash[i] ^= x[i]
 		}

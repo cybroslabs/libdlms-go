@@ -259,7 +259,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 				if err != nil {
 					return nil, err
 				}
-				for i := 0; i < len(items); i++ {
+				for i := range items {
 					ret[i] = (d.Value.(*DlmsError)).Result
 				}
 				return ret, nil
@@ -316,7 +316,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 				if blno != binary.BigEndian.Uint32(al.tmpbuffer[len(items):]) {
 					return nil, fmt.Errorf("unexpected block number")
 				}
-				for i := 0; i < len(items); i++ {
+				for i := range items {
 					ret[i] = base.DlmsResultTag(res[i])
 				}
 			default:
@@ -336,7 +336,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 			if err != nil {
 				return nil, err
 			}
-			for i := 0; i < len(items); i++ {
+			for i := range items {
 				ret[i] = (d.Value.(*DlmsError)).Result
 			}
 			return ret, nil
@@ -372,7 +372,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 		if err != nil {
 			return nil, err
 		}
-		for i := 0; i < len(items); i++ {
+		for i := range items {
 			ret[i] = base.DlmsResultTag(res[i])
 		}
 	}

@@ -2,6 +2,7 @@ package base
 
 import (
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -9,15 +10,14 @@ import (
 )
 
 type Stream interface {
-	Close() error
+	io.ReadCloser
 	Open() error
 	Disconnect() error // hard end of connection without solving any unassociation or so
 	SetLogger(logger *zap.SugaredLogger)
 	SetDeadline(t time.Time)     // zero time means no deadline
 	SetTimeout(t time.Duration)  // zero duration means no timeout
 	SetMaxReceivedBytes(m int64) // every call resets current counter, exceeding bytes count means comm error, only incomming bytes are counted
-	Read(p []byte) (n int, err error)
-	Write(src []byte) error // always write everything
+	Write(src []byte) error      // always write everything
 	GetRxTxBytes() (int64, int64)
 }
 
@@ -28,7 +28,7 @@ func LogHex(s string, b []byte) string {
 	var sbl2 strings.Builder
 	lastline := 0
 
-	for i := 0; i < len(b); i++ {
+	for _, v := range b {
 		if (cnt & 0xf) == 0 {
 			if sbl2.Len() != 0 {
 				sb.WriteString(" ")
@@ -41,8 +41,8 @@ func LogHex(s string, b []byte) string {
 			sb.WriteString(fmt.Sprintf("%08X", cnt))
 			lastline = 9
 		}
-		sb.WriteString(fmt.Sprintf(" %02X", b[i]))
-		sbl2.WriteString(byteToChar(b[i]))
+		sb.WriteString(fmt.Sprintf(" %02X", v))
+		sbl2.WriteString(byteToChar(v))
 		lastline += 3
 		cnt++
 	}

@@ -119,7 +119,7 @@ func (g *gsm) hangup() error {
 	if err != nil {
 		g.logf("error hanging up (but ignoring): %v", err)
 	}
-	for ii := 0; ii < 3; ii++ {
+	for range 3 {
 		err = g.sendCommand(GsmCommand{Command: g.settings.HangUpCommand, OkAnswerRex: _ok, BadAnswerRex: _err})
 		if err != nil {
 			g.logf("error hanging up (but ignoring): %v", err)
@@ -233,7 +233,7 @@ func (g *gsm) parseAnswerLines(cmd GsmCommand) (bool, error) {
 
 func (g *gsm) startInit() error {
 	ok := GsmCommand{Command: "AT", OkAnswerRex: "^OK$", BadAnswerRex: "^ERROR$"}
-	for ii := 0; ii < 3; ii++ {
+	for range 3 {
 		err := g.sendCommand(ok)
 		if err == nil {
 			return nil
