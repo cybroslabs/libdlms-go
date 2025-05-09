@@ -254,6 +254,29 @@ func parseSenderAcseRequirements(tag aaretag, tmp *tmpbuffer) (stoc []byte, err 
 	return
 }
 
+func parseAcsefield(tag aaretag) error {
+	if len(tag.data) != 2 {
+		return fmt.Errorf("invalid 88 tag length")
+	}
+	if tag.data[0] != 0x07 || tag.data[1] != 0x80 {
+		return fmt.Errorf("invalid 88 tag content")
+	}
+	return nil
+}
+
+func parseAEInvocationID(tag aaretag) (out base.Authentication, err error) {
+	if len(tag.data) != 7 {
+		err = fmt.Errorf("invalid 89 tag length")
+		return
+	}
+	if tag.data[0] != 0x60 || tag.data[1] != 0x85 || tag.data[2] != 0x74 || tag.data[3] != 0x05 || tag.data[4] != 0x08 || tag.data[5] != 0x02 {
+		err = fmt.Errorf("invalid 89 tag content")
+		return
+	}
+	out = base.Authentication(tag.data[6])
+	return
+}
+
 func (al *dlmsal) parseUserInformation(tag aaretag) (ir *initiateResponse, cse *confirmedServiceError, err error) {
 	if len(tag.data) < 6 {
 		err = fmt.Errorf("invalid BE tag length")

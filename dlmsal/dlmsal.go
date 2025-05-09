@@ -69,21 +69,22 @@ type dlmsal struct {
 }
 
 type DlmsSettings struct {
-	ConformanceBlock           uint32
-	MaxPduRecvSize             int
-	VAAddress                  int16
-	HighPriority               bool
-	ConfirmedRequests          bool
-	EmptyRLRQ                  bool
-	Security                   base.DlmsSecurity
-	StoC                       []byte
-	SourceDiagnostic           base.SourceDiagnostic
-	ServerSystemTitle          []byte
-	AuthenticationMechanismId  base.Authentication
-	ApplicationContext         base.ApplicationContext
-	DontEncryptUserInformation bool
-	UserId                     *byte
-	ClientCertificate          *x509.Certificate
+	ConformanceBlock                uint32
+	MaxPduRecvSize                  int
+	VAAddress                       int16
+	HighPriority                    bool
+	ConfirmedRequests               bool
+	EmptyRLRQ                       bool
+	Security                        base.DlmsSecurity
+	StoC                            []byte
+	SourceDiagnostic                base.SourceDiagnostic
+	ServerSystemTitle               []byte
+	AuthenticationMechanismId       base.Authentication
+	ApplicationContext              base.ApplicationContext
+	DontEncryptUserInformation      bool
+	UserId                          *byte
+	ClientCertificate               *x509.Certificate
+	ServerAuthenticationMechanismId base.Authentication
 
 	// private part
 	ctos         []byte
@@ -346,6 +347,10 @@ func (d *dlmsal) Open() error { // login and shits
 			mask |= 2
 		case base.BERTypeContext | base.BERTypeConstructed | base.PduTypeUserInformation: // 0xbe
 			uitag = &dt
+		case base.BERTypeContext | base.PduTypeCallingAPInvocationID: // 0x88
+			err = parseAcsefield(dt)
+		case base.BERTypeContext | base.PduTypeCallingAEInvocationID: // 0x89
+			d.settings.ServerAuthenticationMechanismId, err = parseAEInvocationID(dt)
 		default:
 			d.logf("Unknown tag: %02x", dt.tag)
 		}
