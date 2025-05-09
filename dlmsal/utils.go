@@ -110,19 +110,11 @@ func encodetag(dst *bytes.Buffer, tag byte, data []byte) {
 }
 
 func encodetag2(dst *bytes.Buffer, tag byte, innertag byte, data []byte) {
-	if codedlength(uint(len(data))) > 1 { // so not exactly effective for memory copy and so on, but exceptional case
-		var buf bytes.Buffer
-		buf.WriteByte(innertag)
-		encodelength(&buf, uint(len(data)))
-		buf.Write(data)
-		encodetag(dst, tag, buf.Bytes())
-	} else {
-		dst.WriteByte(tag)
-		encodelength(dst, uint(len(data)+2))
-		dst.WriteByte(innertag)
-		encodelength(dst, uint(len(data)))
-		dst.Write(data)
-	}
+	dst.WriteByte(tag)
+	encodelength(dst, uint(len(data)+1+codedlength(uint(len(data)))))
+	dst.WriteByte(innertag)
+	encodelength(dst, uint(len(data)))
+	dst.Write(data)
 }
 
 func decodelength(src io.Reader, tmp *tmpbuffer) (uint, int, error) {

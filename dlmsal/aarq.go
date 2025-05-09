@@ -68,6 +68,7 @@ func putmechname(dst *bytes.Buffer, settings *DlmsSettings) {
 	if settings.AuthenticationMechanismId == base.AuthenticationNone {
 		return
 	}
+	encodetag(dst, base.BERTypeContext|base.PduTypeSenderAcseRequirements, []byte{0x07, 0x80})
 	dst.WriteByte(base.BERTypeContext | base.PduTypeMechanismName)
 	dst.Write([]byte{0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x02})
 	dst.WriteByte(byte(settings.AuthenticationMechanismId))
@@ -85,6 +86,24 @@ func putsystitle(dst *bytes.Buffer, settings *DlmsSettings) {
 	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa:
 		encodetag2(dst, base.BERTypeContext|base.BERTypeConstructed|base.PduTypeCallingAPTitle, 0x04, settings.systemtitle)
 	}
+}
+
+func putclientcertificate(dst *bytes.Buffer, settings *DlmsSettings) {
+	if settings.ClientCertificate == nil {
+		return
+	}
+	encodetag2(dst, base.BERTypeContext|base.BERTypeConstructed|base.PduTypeCallingAEQualifier, 0x04, settings.ClientCertificate.Raw)
+}
+
+func putuserid(dst *bytes.Buffer, settings *DlmsSettings) {
+	if settings.UserId == nil {
+		return
+	}
+	dst.WriteByte(base.BERTypeContext | base.BERTypeConstructed | base.PduTypeCallingAEInvocationID)
+	dst.WriteByte(3)
+	dst.WriteByte(2)
+	dst.WriteByte(1)
+	dst.WriteByte(*settings.UserId)
 }
 
 func (d *dlmsal) createxdlms(dst *bytes.Buffer) (err error) {
@@ -132,9 +151,8 @@ func (d *dlmsal) encodeaarq() (out []byte, outnosec []byte, err error) {
 
 	putappctxname(&content, s)
 	putsystitle(&content, s)
-	if s.AuthenticationMechanismId != base.AuthenticationNone {
-		encodetag(&content, base.BERTypeContext|base.PduTypeSenderAcseRequirements, []byte{0x07, 0x80})
-	}
+	putclientcertificate(&content, s)
+	putuserid(&content, s)
 	putmechname(&content, s)
 	st := content.Len()
 	putsecvalues(&content, s)

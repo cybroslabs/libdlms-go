@@ -2,6 +2,7 @@ package dlmsal
 
 import (
 	"bytes"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -81,6 +82,8 @@ type DlmsSettings struct {
 	AuthenticationMechanismId  base.Authentication
 	ApplicationContext         base.ApplicationContext
 	DontEncryptUserInformation bool
+	UserId                     *byte
+	ClientCertificate          *x509.Certificate
 
 	// private part
 	ctos         []byte
@@ -164,6 +167,32 @@ func NewSettingsWithGmacLN(systemtitle []byte, g gcm.Gcm, ctoshash []byte, fc ui
 		password:     newcopy(ctoshash),
 		framecounter: fc,
 		Security:     base.SecurityEncryption | base.SecurityAuthentication,
+	}
+	ret.ctos = ret.password // just reference
+	return &ret, nil
+}
+
+func NewSettingsWithEcdsaLN(systemtitle []byte, g gcm.Gcm, ctoshash []byte, fc uint32) (*DlmsSettings, error) {
+	if len(systemtitle) != 8 {
+		return nil, fmt.Errorf("systemtitle has to be 8 bytes long")
+	}
+	if len(ctoshash) < 32 {
+		return nil, fmt.Errorf("ctoshash is too short, it has to be at least 32 bytes long")
+	}
+	ret := DlmsSettings{
+		AuthenticationMechanismId: base.AuthenticationHighEcdsa,
+		ApplicationContext:        base.ApplicationContextLNCiphering,
+		HighPriority:              true,
+		ConfirmedRequests:         true,
+		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
+			base.ConformanceBlockBlockTransferWithAction | base.ConformanceBlockAction | base.ConformanceBlockGet | base.ConformanceBlockSet |
+			base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences | base.ConformanceBlockAttribute0SupportedWithGet |
+			base.ConformanceBlockGeneralProtection,
+		systemtitle:  newcopy(systemtitle),
+		gcm:          g,
+		password:     newcopy(ctoshash),
+		framecounter: fc,
+		Security:     base.SecurityEncryption | base.SecurityAuthentication | base.SecuritySuite2,
 	}
 	ret.ctos = ret.password // just reference
 	return &ret, nil
