@@ -82,7 +82,7 @@ func putsecvalues(dst *bytes.Buffer, settings *DlmsSettings) {
 
 func putsystitle(dst *bytes.Buffer, settings *DlmsSettings) {
 	switch settings.AuthenticationMechanismId {
-	case base.AuthenticationHighGmac:
+	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa:
 		encodetag2(dst, base.BERTypeContext|base.BERTypeConstructed|base.PduTypeCallingAPTitle, 0x04, settings.systemtitle)
 	}
 }
