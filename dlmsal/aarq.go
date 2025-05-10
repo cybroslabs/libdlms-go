@@ -2,6 +2,7 @@ package dlmsal
 
 import (
 	"bytes"
+	"crypto/x509"
 	"encoding/binary"
 	"fmt"
 
@@ -92,7 +93,7 @@ func putclientcertificate(dst *bytes.Buffer, settings *DlmsSettings) {
 	if settings.ClientCertificate == nil {
 		return
 	}
-	encodetag2(dst, base.BERTypeContext|base.BERTypeConstructed|base.PduTypeCallingAEQualifier, 0x04, settings.ClientCertificate.Raw)
+	encodetag2(dst, base.BERTypeContext|base.BERTypeConstructed|base.PduTypeCallingAEQualifier, 0x04, settings.ClientCertificate.RawTBSCertificate) // or complete Raw? damn complicated
 }
 
 func putuserid(dst *bytes.Buffer, settings *DlmsSettings) {
@@ -237,6 +238,32 @@ func parseAPTitle(tag aaretag, tmp *tmpbuffer) (out []byte, err error) {
 	}
 	out = newcopy(d)
 	return
+}
+
+func (d *dlmsal) parseCalledAEInvocationID(tag aaretag) error {
+	if len(tag.data) < 2 {
+		return fmt.Errorf("invalid A5 tag length")
+	}
+	// parse inner tag
+	t, _, i, err := decodetag(tag.data, &d.tmpbuffer)
+	if err != nil {
+		return err
+	}
+
+	switch t {
+	case 0x02: // integer
+		if len(i) != 1 {
+			return fmt.Errorf("invalid A5 tag length")
+		}
+		d.settings.ServerUserId = i[0]
+		return nil
+	case 0x04: // octet string, server certificate
+		var err error
+		d.settings.ServerCertificate, err = x509.ParseCertificate(i)
+		return err
+	default:
+		return fmt.Errorf("invalid A5 tag content")
+	}
 }
 
 func parseSenderAcseRequirements(tag aaretag, tmp *tmpbuffer) (stoc []byte, err error) {

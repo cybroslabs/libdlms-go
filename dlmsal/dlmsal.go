@@ -83,7 +83,9 @@ type DlmsSettings struct {
 	ApplicationContext              base.ApplicationContext
 	DontEncryptUserInformation      bool
 	UserId                          *byte
+	ServerUserId                    byte
 	ClientCertificate               *x509.Certificate
+	ServerCertificate               *x509.Certificate
 	ServerAuthenticationMechanismId base.Authentication
 
 	// private part
@@ -342,6 +344,8 @@ func (d *dlmsal) Open() error { // login and shits
 		case base.BERTypeContext | base.BERTypeConstructed | base.PduTypeCalledAPInvocationID: // 0xa4
 			d.settings.ServerSystemTitle, err = parseAPTitle(dt, &d.tmpbuffer)
 			mask |= 1
+		case base.BERTypeContext | base.BERTypeConstructed | base.PduTypeCalledAEInvocationID: // 0xa5
+			err = d.parseCalledAEInvocationID(dt)
 		case base.BERTypeContext | base.BERTypeConstructed | base.PduTypeSenderAcseRequirements: // 0xaa
 			d.settings.StoC, err = parseSenderAcseRequirements(dt, &d.tmpbuffer)
 			mask |= 2
