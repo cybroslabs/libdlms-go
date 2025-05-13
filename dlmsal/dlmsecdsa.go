@@ -43,6 +43,8 @@ func ecdsasign(origin, recipient, content []byte, privkey *ecdsa.PrivateKey) ([]
 	if err != nil {
 		return nil, err
 	}
+
+	encodelength(&ret, uint(len(sign_r.Bytes())+len(sign_s.Bytes())))
 	ret.Write(sign_r.Bytes())
 	ret.Write(sign_s.Bytes())
 	return ret.Bytes(), nil
