@@ -1,7 +1,9 @@
 package dlmsal
 
 import (
+	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"io"
 
@@ -109,5 +111,10 @@ func (d *dlmsal) recvcipheredpdu(rtag base.CosemTag, ded bool) (tag base.CosemTa
 		return
 	}
 	tag = base.CosemTag(d.tmpbuffer[0])
-	return
+	whole, err := io.ReadAll(str)
+	if err != nil {
+		return tag, nil, err
+	}
+	fmt.Printf("whole: %s\n", hex.EncodeToString(whole))
+	return tag, bytes.NewBuffer(whole), nil
 }
