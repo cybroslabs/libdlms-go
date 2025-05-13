@@ -39,10 +39,11 @@ func ecdsasign(origin, recipient, content []byte, privkey *ecdsa.PrivateKey) ([]
 	default:
 		return nil, fmt.Errorf("unsupported curve %v", privkey.Curve.Params().BitSize)
 	}
-	sign, err := ecdsa.SignASN1(rand.Reader, privkey, hash)
+	sign_r, sign_s, err := ecdsa.Sign(rand.Reader, privkey, hash)
 	if err != nil {
 		return nil, err
 	}
-	ret.Write(sign)
+	ret.Write(sign_r.Bytes())
+	ret.Write(sign_s.Bytes())
 	return ret.Bytes(), nil
 }
