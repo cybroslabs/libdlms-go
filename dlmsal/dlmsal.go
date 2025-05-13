@@ -78,6 +78,7 @@ type DlmsSettings struct {
 	Security                        base.DlmsSecurity
 	StoC                            []byte
 	SourceDiagnostic                base.SourceDiagnostic
+	AssociationResult               base.AssociationResult
 	ServerSystemTitle               []byte
 	AuthenticationMechanismId       base.Authentication
 	ApplicationContext              base.ApplicationContext
@@ -400,6 +401,7 @@ func (d *dlmsal) Open() error { // login and shits
 		return fmt.Errorf("login failed: %v", d.aareres.associationResult)
 	}
 	d.settings.SourceDiagnostic = d.aareres.sourceDiagnostic // duplicit information, damn it, maybe make a bit bigger settings, or maybe status?
+	d.settings.AssociationResult = d.aareres.associationResult
 	switch d.aareres.sourceDiagnostic {
 	case base.SourceDiagnosticNone:
 	case base.SourceDiagnosticAuthenticationRequired:

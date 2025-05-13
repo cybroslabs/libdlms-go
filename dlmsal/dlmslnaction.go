@@ -10,6 +10,7 @@ import (
 )
 
 type dlmsalaction struct { // this will implement io.Reader for LN Action operation, not supporting block data sending, only receiving
+	io.Reader
 	master *dlmsal
 	state  int
 	// 0 before first response

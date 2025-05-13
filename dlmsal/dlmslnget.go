@@ -10,6 +10,7 @@ import (
 )
 
 type dlmsalget struct { // this will implement io.Reader for LN Get operation
+	io.Reader
 	master *dlmsal
 	state  int
 	// 0 before first response
