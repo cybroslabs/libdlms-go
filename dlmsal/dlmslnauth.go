@@ -8,7 +8,7 @@ import (
 	"github.com/cybroslabs/libdlms-go/gcm"
 )
 
-func (d *dlmsal) LNAuthentication(checkresp bool) error {
+func (d *dlmsal) LNAuthentication(checkresp bool) error { // todo variants for other auth mechanisms
 	s := d.settings
 
 	if d.aareres.associationResult != base.AssociationResultAccepted { // sadly this zero is also default value
@@ -47,7 +47,8 @@ func (d *dlmsal) LNAuthentication(checkresp bool) error {
 		Obis:      DlmsObis{A: 0, B: 0, C: 40, D: 0, E: 0, F: 255},
 		Attribute: 1,
 		HasAccess: false,
-		SetData:   &data}
+		SetData:   &data,
+	}
 
 	s.framecounter++
 	adata, err := d.Action(req)
