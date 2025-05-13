@@ -2,11 +2,13 @@ package dlmsal
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 
 	"github.com/cybroslabs/libdlms-go/base"
+	"github.com/cybroslabs/libdlms-go/gcm"
 )
 
 type dlmsalaction struct { // this will implement io.Reader for LN Action operation, not supporting block data sending, only receiving
@@ -28,19 +30,10 @@ func encodelnactionitem(dst *bytes.Buffer, item *DlmsLNRequestItem) error {
 	if item.HasAccess {
 		return fmt.Errorf("action item cant have access")
 	}
-	if item.SetData != nil {
-		dst.WriteByte(1)
-		err := encodeData(dst, item.SetData)
-		if err != nil {
-			return fmt.Errorf("unable to encode data: %w", err)
-		}
-	} else {
-		dst.WriteByte(0)
-	}
 	return nil
 }
 
-func (ln *dlmsalaction) action(item DlmsLNRequestItem) (data *DlmsData, err error) {
+func (ln *dlmsalaction) action(item DlmsLNRequestItem) (*DlmsData, error) {
 	master := ln.master
 	local := &master.pdu
 	local.Reset()
@@ -48,15 +41,123 @@ func (ln *dlmsalaction) action(item DlmsLNRequestItem) (data *DlmsData, err erro
 	local.WriteByte(byte(TagActionRequestNormal))
 	master.invokeid = (master.invokeid + 1) & 7
 	local.WriteByte(master.invokeid | master.settings.invokebyte)
-	err = encodelnactionitem(local, &item)
+	err := encodelnactionitem(local, &item)
 	if err != nil {
-		return
+		return nil, err
 	}
+
+	var sdata bytes.Buffer
+	if item.SetData != nil {
+		sdata.WriteByte(1)
+		err = encodeData(&sdata, item.SetData)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		sdata.WriteByte(0)
+	}
+
+	if local.Len()+sdata.Len() > master.maxPduSendSize-6-gcm.GCM_TAG_LENGTH { // block transfer, count on 6 bytes for tag and worst length and tag, ok, possible byte wasting here
+		local.Reset() // yes yes, wasting a bit, but usually this ends in single pdu, just in case...
+		local.WriteByte(byte(base.TagActionRequest))
+		local.WriteByte(byte(TagActionRequestWithFirstPBlock))
+		local.WriteByte(master.invokeid | master.settings.invokebyte)
+		_ = encodelnactionitem(local, &item)
+
+		if master.maxPduSendSize < 16+gcm.GCM_TAG_LENGTH+local.Len() {
+			return nil, fmt.Errorf("too small max pdu size for block transfer")
+		}
+		data := sdata.Bytes()
+		blno := uint32(1)
+		last := false
+
+		for !last {
+			var ts int
+			if len(data) > master.maxPduSendSize-16-gcm.GCM_TAG_LENGTH-local.Len() { // 11 bytes for my length and possible gcm length, todo space for signature here
+				ts = master.maxPduSendSize - 16 - gcm.GCM_TAG_LENGTH - local.Len()
+				last = false
+			} else {
+				ts = len(data)
+				last = true
+			}
+
+			if last {
+				local.WriteByte(1)
+			} else {
+				local.WriteByte(0)
+			}
+			local.WriteByte(byte(blno >> 24))
+			local.WriteByte(byte(blno >> 16))
+			local.WriteByte(byte(blno >> 8))
+			local.WriteByte(byte(blno))
+			encodelength(local, uint(ts))
+			local.Write(data[:ts])
+			data = data[ts:]
+
+			tag, str, err := master.sendpdu()
+			if err != nil {
+				return nil, err
+			}
+			switch tag {
+			case base.TagActionResponse:
+			case base.TagExceptionResponse:
+				ln.transport = str
+				return ln.actiondata(tag)
+			default:
+				return nil, fmt.Errorf("unexpected tag: %02x", tag)
+			}
+
+			_, err = io.ReadFull(str, master.tmpbuffer[:2])
+			if err != nil {
+				return nil, err
+			}
+			if master.tmpbuffer[1]&7 != master.invokeid {
+				return nil, fmt.Errorf("unexpected invoke id")
+			}
+			switch ActionResponseTag(master.tmpbuffer[0]) {
+			case TagActionResponseNextPBlock:
+				if last {
+					return nil, fmt.Errorf("expected response with pblock tag, but not got")
+				}
+				_, err = io.ReadFull(str, master.tmpbuffer[2:6])
+				if err != nil {
+					return nil, err
+				}
+				if blno != binary.BigEndian.Uint32(master.tmpbuffer[2:]) {
+					return nil, fmt.Errorf("unexpected block number")
+				}
+				// ask for another block
+				local.Reset()
+				local.WriteByte(byte(base.TagActionRequest))
+				local.WriteByte(master.invokeid | master.settings.invokebyte)
+				local.WriteByte(byte(TagActionRequestWithPBlock))
+				blno++
+			case TagActionResponseWithPBlock:
+				if !last {
+					return nil, fmt.Errorf("expected response with next pblock tag, but not got")
+				}
+				ln.transport = str
+				return ln.actiondatinnertag(ActionResponseTag(master.tmpbuffer[0])) // there is a question about block numbering
+			case TagActionResponseNormal:
+				if !last {
+					return nil, fmt.Errorf("expected response with next pblock tag, but not got")
+				}
+				ln.transport = str
+				return ln.actiondatinnertag(ActionResponseTag(master.tmpbuffer[0]))
+			default:
+				return nil, fmt.Errorf("unexpected tag: %02x", master.tmpbuffer[0])
+			}
+		}
+		return nil, fmt.Errorf("program error, unexpected state: %v", ln.state)
+	}
+
+	// stuff that into single pdu
+	local.Write(sdata.Bytes())
 
 	// send itself, that could be fun, do that in one step for now
 	tag, str, err := master.sendpdu()
 	if err != nil {
-		return
+		return nil, err
 	}
 	ln.transport = str
 
@@ -64,9 +165,58 @@ func (ln *dlmsalaction) action(item DlmsLNRequestItem) (data *DlmsData, err erro
 	return ln.actiondata(tag)
 }
 
+func (ln *dlmsalaction) actiondatinnertag(tag ActionResponseTag) (data *DlmsData, err error) {
+	master := ln.master
+	switch tag {
+	case TagActionResponseNormal:
+		// decode data themselves
+		_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
+		if err != nil {
+			return data, err
+		}
+
+		ln.state = 100
+		if master.tmpbuffer[0] != 0 {
+			d := NewDlmsDataError(base.DlmsResultTag(master.tmpbuffer[0]))
+			return &d, nil
+		}
+
+		_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
+		if err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return nil, nil
+			}
+			return
+		}
+		if master.tmpbuffer[0] == 0 { // no data as a result
+			return
+		}
+		_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1]) // fuck this reading one by one...
+		if err != nil {
+			return
+		}
+		if master.tmpbuffer[0] != 0 {
+			_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
+			if err != nil {
+				return
+			}
+			rd := NewDlmsDataError(base.DlmsResultTag(master.tmpbuffer[0]))
+			return &rd, nil
+		}
+
+		d, _, err := decodeDataTag(ln.transport, &master.tmpbuffer)
+		return &d, err
+	case TagActionResponseWithPBlock: // this is a bit of hell, read till eof from lower layer and then ask for next block and so on
+		ln.state = 1
+		d, _, err := decodeDataTag(ln, &master.tmpbuffer)
+		return &d, err
+	}
+	return data, fmt.Errorf("unexpected response tag: %02x", tag)
+}
+
 func (ln *dlmsalaction) actiondata(tag base.CosemTag) (data *DlmsData, err error) {
 	master := ln.master
-	switch ln.state {
+	switch ln.state { // this switch is worthless, just in case
 	case 0: // read first things as a response
 		switch tag {
 		case base.TagActionResponse:
@@ -86,51 +236,7 @@ func (ln *dlmsalaction) actiondata(tag base.CosemTag) (data *DlmsData, err error
 			return data, fmt.Errorf("unexpected invoke id")
 		}
 
-		switch ActionResponseTag(master.tmpbuffer[0]) {
-		case TagActionResponseNormal:
-			// decode data themselves
-			_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
-			if err != nil {
-				return data, err
-			}
-
-			ln.state = 100
-			if master.tmpbuffer[0] != 0 {
-				d := NewDlmsDataError(base.DlmsResultTag(master.tmpbuffer[0]))
-				return &d, nil
-			}
-
-			_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
-			if err != nil {
-				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-					return nil, nil
-				}
-				return
-			}
-			if master.tmpbuffer[0] == 0 { // no data as a result
-				return
-			}
-			_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1]) // fuck this reading one by one...
-			if err != nil {
-				return
-			}
-			if master.tmpbuffer[0] != 0 {
-				_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
-				if err != nil {
-					return
-				}
-				rd := NewDlmsDataError(base.DlmsResultTag(master.tmpbuffer[0]))
-				return &rd, nil
-			}
-
-			d, _, err := decodeDataTag(ln.transport, &master.tmpbuffer)
-			return &d, err
-		case TagActionResponseWithPBlock: // this is a bit of hell, read till eof from lower layer and then ask for next block and so on
-			ln.state = 1
-			d, _, err := decodeDataTag(ln, &master.tmpbuffer)
-			return &d, err
-		}
-		return data, fmt.Errorf("unexpected response tag: %02x", master.tmpbuffer[0])
+		return ln.actiondatinnertag(ActionResponseTag(master.tmpbuffer[0]))
 	case 100:
 		return data, fmt.Errorf("program error, all data are read")
 	}
