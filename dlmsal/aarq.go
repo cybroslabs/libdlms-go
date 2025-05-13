@@ -113,14 +113,14 @@ func (d *dlmsal) createxdlms(dst *bytes.Buffer) (err error) {
 	var subxdlms []byte
 	if s.dedgcm != nil {
 		xdlms = make([]byte, 15+len(s.dedicatedkey))
-		xdlms[0] = 0x01
+		xdlms[0] = byte(base.TagInitiateRequest)
 		xdlms[1] = 0x01
 		xdlms[2] = byte(len(s.dedicatedkey))
 		copy(xdlms[3:], s.dedicatedkey)
 		subxdlms = xdlms[3+len(s.dedicatedkey):]
 	} else {
 		xdlms = make([]byte, 14)
-		xdlms[0] = 0x01
+		xdlms[0] = byte(base.TagInitiateRequest)
 		xdlms[1] = 0x00
 		subxdlms = xdlms[2:]
 	}
@@ -135,7 +135,18 @@ func (d *dlmsal) createxdlms(dst *bytes.Buffer) (err error) {
 	subxdlms[10] = byte(s.MaxPduRecvSize >> 8) // no limit in maximum received apdu length
 	subxdlms[11] = byte(s.MaxPduRecvSize)
 
-	if !d.settings.DontEncryptUserInformation {
+	// optional signing, damn
+	if s.PerformSigning {
+		if s.ClientPrivateKey == nil {
+			return fmt.Errorf("ClientPrivateKey not set")
+		}
+		xdlms, err = ecdsasign(s.systemtitle, nil, xdlms, s.ClientPrivateKey)
+		if err != nil {
+			return
+		}
+	}
+
+	if !s.DontEncryptUserInformation {
 		switch s.AuthenticationMechanismId {
 		case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa: // encrypt this
 			xdlms, err = d.encryptpacket(byte(base.TagGloInitiateRequest), xdlms, false)

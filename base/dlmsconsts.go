@@ -194,6 +194,12 @@ const (
 	TagDedSetResponse              CosemTag = 213
 	TagDedActionResponse           CosemTag = 215
 	TagExceptionResponse           CosemTag = 216
+	// --- general
+	TagGeneralGloCiphering  CosemTag = 219
+	TagGeneralDedCiphering  CosemTag = 220
+	TagGeneralCiphering     CosemTag = 221
+	TagGeneralSigning       CosemTag = 223
+	TagGeneralBlockTransfer CosemTag = 224
 )
 
 type DlmsResultTag byte

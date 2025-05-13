@@ -2,6 +2,7 @@ package dlmsal
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"crypto/x509"
 	"errors"
 	"fmt"
@@ -86,8 +87,10 @@ type DlmsSettings struct {
 	UserId                          *byte
 	ServerUserId                    byte
 	ClientCertificate               *x509.Certificate
+	ClientPrivateKey                *ecdsa.PrivateKey
 	ServerCertificate               *x509.Certificate
 	ServerAuthenticationMechanismId base.Authentication
+	PerformSigning                  bool
 
 	// private part
 	ctos         []byte
