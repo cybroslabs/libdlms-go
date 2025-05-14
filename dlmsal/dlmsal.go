@@ -14,7 +14,9 @@ import (
 )
 
 const (
-	maxsmallreadout = 2048
+	maxsmallreadout  = 2048
+	pduoverhead      = 6 + gcm.GCM_TAG_LENGTH + 9  // no block header, just length+tag and encoded systitle, 8 bytes + length byte
+	pdublockoverhead = 16 + gcm.GCM_TAG_LENGTH + 9 // additional block header here
 )
 
 type DlmsSNRequestItem struct {
@@ -91,6 +93,7 @@ type DlmsSettings struct {
 	ServerCertificate               *x509.Certificate
 	ServerAuthenticationMechanismId base.Authentication
 	PerformSigning                  bool
+	UseGeneralGloDedCiphering       bool
 
 	// private part
 	ctos         []byte

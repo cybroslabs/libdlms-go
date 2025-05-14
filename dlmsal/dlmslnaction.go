@@ -8,7 +8,6 @@ import (
 	"io"
 
 	"github.com/cybroslabs/libdlms-go/base"
-	"github.com/cybroslabs/libdlms-go/gcm"
 )
 
 type dlmsalaction struct { // this will implement io.Reader for LN Action operation, not supporting block data sending, only receiving
@@ -57,14 +56,14 @@ func (ln *dlmsalaction) action(item DlmsLNRequestItem) (*DlmsData, error) {
 		sdata.WriteByte(0)
 	}
 
-	if local.Len()+sdata.Len() > master.maxPduSendSize-6-gcm.GCM_TAG_LENGTH { // block transfer, count on 6 bytes for tag and worst length and tag, ok, possible byte wasting here
+	if local.Len()+sdata.Len() > master.maxPduSendSize-pduoverhead { // block transfer, count on 6 bytes for tag and worst length and tag, ok, possible byte wasting here
 		local.Reset() // yes yes, wasting a bit, but usually this ends in single pdu, just in case...
 		local.WriteByte(byte(base.TagActionRequest))
 		local.WriteByte(byte(TagActionRequestWithFirstPBlock))
 		local.WriteByte(master.invokeid | master.settings.invokebyte)
 		_ = encodelnactionitem(local, &item)
 
-		if master.maxPduSendSize < 16+gcm.GCM_TAG_LENGTH+local.Len() {
+		if master.maxPduSendSize < pdublockoverhead+local.Len() {
 			return nil, fmt.Errorf("too small max pdu size for block transfer")
 		}
 		data := sdata.Bytes()
@@ -73,8 +72,8 @@ func (ln *dlmsalaction) action(item DlmsLNRequestItem) (*DlmsData, error) {
 
 		for !last {
 			var ts int
-			if len(data) > master.maxPduSendSize-16-gcm.GCM_TAG_LENGTH-local.Len() { // 11 bytes for my length and possible gcm length, todo space for signature here
-				ts = master.maxPduSendSize - 16 - gcm.GCM_TAG_LENGTH - local.Len()
+			if len(data) > master.maxPduSendSize-pdublockoverhead-local.Len() { // 11 bytes for my length and possible gcm length, todo space for signature here
+				ts = master.maxPduSendSize - pdublockoverhead - local.Len()
 				last = false
 			} else {
 				ts = len(data)

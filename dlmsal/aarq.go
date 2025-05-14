@@ -331,32 +331,16 @@ func (al *dlmsal) parseUserInformation(tag aaretag) (ir *initiateResponse, cse *
 }
 
 func (al *dlmsal) parseUserInformationtag(d []byte) (ir *initiateResponse, cse *confirmedServiceError, err error) {
-	if d[0] == byte(base.TagInitiateResponse) {
+	switch base.CosemTag(d[0]) {
+	case base.TagInitiateResponse:
 		iir, err := decodeInitiateResponse(d[1:])
 		return &iir, nil, err
-	}
-	if d[0] == byte(base.TagConfirmedServiceError) {
+	case base.TagConfirmedServiceError:
 		cse, err := decodeConfirmedServiceError(d[1:])
 		return nil, &cse, err
-	}
-	if d[0] == byte(base.TagGloConfirmedServiceError) { // artifical service error for now, not decoding inside of it
+	case base.TagGloConfirmedServiceError: // artifical service error for now, not decoding inside of it
 		return nil, nil, fmt.Errorf("TagGloConfirmedServiceError returned")
-	}
-	if d[0] == byte(base.TagGloInitiateResponse) {
-		s := al.settings
-		if s.gcm == nil {
-			return nil, nil, fmt.Errorf("GCM not initialized")
-		}
-		enc := bytes.NewBuffer(d[1:])
-		ln, c, err := decodelength(enc, &al.tmpbuffer)
-		if err != nil {
-			return nil, nil, err
-
-		}
-		d = d[1+c:]
-		if len(d) < int(ln) || ln < 5 {
-			return nil, nil, fmt.Errorf("invalid xDlms tag length")
-		}
+	case base.TagGloInitiateResponse, base.TagGeneralGloCiphering:
 		decxdlms, err := al.decryptpacket(d, false)
 		if err != nil {
 			return nil, nil, err

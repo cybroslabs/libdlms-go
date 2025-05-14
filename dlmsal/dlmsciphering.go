@@ -1,33 +1,40 @@
 package dlmsal
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
+
+	"github.com/cybroslabs/libdlms-go/base"
 )
 
 // tag is common byte in this case, could be also 9 for octetstring and so on, it encodes also length
 func (d *dlmsal) encryptpacket(tag byte, apdu []byte, ded bool) ([]byte, error) {
+	usegeneral := tag == byte(base.TagGeneralGloCiphering) || tag == byte(base.TagGeneralDedCiphering)
 	s := d.settings
 	// lets panic in case of nil gcm -> program fault shouldnt happen at all
 	wl, _ := s.gcm.GetEncryptLength(byte(s.Security), apdu)
-	if cap(d.cryptbuffer) < wl+11 {
-		d.cryptbuffer = make([]byte, wl+11)
+	if cap(d.cryptbuffer) < wl+20 { // 11 bytes for header and 9 for possible general glo/ded ciphering encoded systemtitle, this is madness, should be set anyway that title
+		d.cryptbuffer = make([]byte, wl+20)
 	} else {
 		d.cryptbuffer = d.cryptbuffer[:cap(d.cryptbuffer)]
 	}
 	d.cryptbuffer[0] = tag
-	off := encodelength2(d.cryptbuffer[1:], uint(wl+5))
-	off++
+	off := 1
+	if usegeneral {
+		if len(s.systemtitle) != 8 { // this seems to be so hardcoded
+			return nil, fmt.Errorf("invalid client system title length %d", len(s.systemtitle))
+		}
+		d.cryptbuffer[1] = 8
+		copy(d.cryptbuffer[2:], s.systemtitle)
+		off += 9
+	}
+	off += encodelength2(d.cryptbuffer[off:], uint(wl+5))
 	d.cryptbuffer[off] = byte(s.Security)
 	off++
-	d.cryptbuffer[off] = byte(s.framecounter >> 24) // yeah yeah, binary.BigEndian blabla
-	off++
-	d.cryptbuffer[off] = byte(s.framecounter >> 16)
-	off++
-	d.cryptbuffer[off] = byte(s.framecounter >> 8)
-	off++
-	d.cryptbuffer[off] = byte(s.framecounter)
-	off++
+	binary.BigEndian.PutUint32(d.cryptbuffer[off:], s.framecounter)
+	off += 4
 
 	// in this state, encrypt cant remake input reusable buffer
 	var err error
@@ -40,11 +47,48 @@ func (d *dlmsal) encryptpacket(tag byte, apdu []byte, ded bool) ([]byte, error) 
 	return d.cryptbuffer[:off+wl], err
 }
 
-func (d *dlmsal) decryptpacket(apdu []byte, ded bool) (ret []byte, err error) { // not checking expected fc, just receive everything
+func (d *dlmsal) decryptpacket(apdu []byte, ded bool) ([]byte, error) { // not checking expected fc, just receive everything, todo handle general ciphering
 	if len(apdu) < 5 {
 		return nil, fmt.Errorf("invalid apdu length")
 	}
+
+	// check tag inside first byte and behave accordingly
+	usegeneral := apdu[0] == byte(base.TagGeneralGloCiphering) || apdu[0] == byte(base.TagGeneralDedCiphering)
 	s := d.settings
+	enc := bytes.NewBuffer(apdu[1:])
+	off := 1
+	if usegeneral {
+		sl, c, err := decodelength(enc, &d.tmpbuffer)
+		if err != nil {
+			return nil, err
+		}
+		off += c
+		if off+int(sl) > len(apdu) {
+			return nil, fmt.Errorf("invalid apdu length, no space for systemtitle")
+		}
+		var tmptitle []byte
+		if len(d.tmpbuffer) <= int(sl) {
+			tmptitle = d.tmpbuffer[:sl]
+		} else {
+			tmptitle = make([]byte, sl)
+		}
+		_, err = io.ReadFull(enc, tmptitle)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read system title: %w", err)
+		}
+		off += int(sl)
+	}
+
+	sl, c, err := decodelength(enc, &d.tmpbuffer)
+	if err != nil {
+		return nil, fmt.Errorf("unable to decode length: %w", err)
+	}
+	off += c
+	apdu = apdu[off:]
+	if len(apdu) < int(sl) || len(apdu) < 5 {
+		return nil, fmt.Errorf("invalid apdu length, no space for ciphered data")
+	}
+
 	fc := binary.BigEndian.Uint32(apdu[1:])
 	if ded {
 		if s.dedgcm == nil {

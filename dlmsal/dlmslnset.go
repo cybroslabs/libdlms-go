@@ -7,7 +7,6 @@ import (
 	"io"
 
 	"github.com/cybroslabs/libdlms-go/base"
-	"github.com/cybroslabs/libdlms-go/gcm"
 )
 
 func encodelnsetitem(dst *bytes.Buffer, item *DlmsLNRequestItem) error {
@@ -45,14 +44,14 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]base.DlmsResultTag, error
 
 	ret := make([]base.DlmsResultTag, 1)
 
-	if local.Len()+sdata.Len() > al.maxPduSendSize-6-gcm.GCM_TAG_LENGTH { // block transfer, count on 6 bytes for tag and worst length and tag, ok, possible byte wasting here
+	if local.Len()+sdata.Len() > al.maxPduSendSize-pduoverhead { // block transfer, count on 6 bytes for tag and worst length and tag, ok, possible byte wasting here
 		local.Reset() // possible large memory allocated here, but only for one job
 		local.WriteByte(byte(base.TagSetRequest))
 		local.WriteByte(al.invokeid | al.settings.invokebyte)
 		local.WriteByte(byte(TagSetRequestWithFirstDataBlock))
 		_ = encodelnsetitem(local, &item)
 
-		if al.maxPduSendSize < 16+gcm.GCM_TAG_LENGTH+local.Len() {
+		if al.maxPduSendSize < pdublockoverhead+local.Len() {
 			return nil, fmt.Errorf("too small max pdu size for block transfer")
 		}
 		data := sdata.Bytes()
@@ -60,8 +59,8 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]base.DlmsResultTag, error
 		last := false
 		for !last {
 			var ts int
-			if len(data) > al.maxPduSendSize-16-gcm.GCM_TAG_LENGTH-local.Len() { // 11 bytes for my length and possible gcm length
-				ts = al.maxPduSendSize - 16 - gcm.GCM_TAG_LENGTH - local.Len()
+			if len(data) > al.maxPduSendSize-pdublockoverhead-local.Len() { // 11 bytes for my length and possible gcm length
+				ts = al.maxPduSendSize - pdublockoverhead - local.Len()
 				last = false
 			} else {
 				ts = len(data)
@@ -209,7 +208,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 
 	ret = make([]base.DlmsResultTag, len(items))
 
-	if local.Len()+sdata.Len() > al.maxPduSendSize-6-gcm.GCM_TAG_LENGTH { // block transfer, count on 6 bytes for tag and worst length and tag, ok, possible byte wasting here
+	if local.Len()+sdata.Len() > al.maxPduSendSize-pduoverhead { // block transfer, count on 6 bytes for tag and worst length and tag, ok, possible byte wasting here
 		local.Reset()
 		local.WriteByte(byte(base.TagSetRequest))
 		local.WriteByte(al.invokeid | al.settings.invokebyte)
@@ -219,7 +218,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 			_ = encodelnsetitem(local, &i)
 		}
 
-		if al.maxPduSendSize < 16+gcm.GCM_TAG_LENGTH+local.Len() {
+		if al.maxPduSendSize < pdublockoverhead+local.Len() {
 			return nil, fmt.Errorf("too small max pdu size for block transfer")
 		}
 		data := sdata.Bytes()
@@ -227,8 +226,8 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 		last := false
 		for !last {
 			var ts int
-			if len(data) > al.maxPduSendSize-16-gcm.GCM_TAG_LENGTH-local.Len() { // 11 bytes for my length and possible gcm length
-				ts = al.maxPduSendSize - 16 - gcm.GCM_TAG_LENGTH - local.Len()
+			if len(data) > al.maxPduSendSize-pdublockoverhead-local.Len() { // 11 bytes for my length and possible gcm length
+				ts = al.maxPduSendSize - pdublockoverhead - local.Len()
 				last = false
 			} else {
 				ts = len(data)
