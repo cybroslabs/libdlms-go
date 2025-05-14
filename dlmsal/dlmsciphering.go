@@ -67,7 +67,7 @@ func (d *dlmsal) decryptpacket(apdu []byte, ded bool) ([]byte, error) { // not c
 			return nil, fmt.Errorf("invalid apdu length, no space for systemtitle")
 		}
 		var tmptitle []byte
-		if len(d.tmpbuffer) <= int(sl) {
+		if len(d.tmpbuffer) >= int(sl) {
 			tmptitle = d.tmpbuffer[:sl]
 		} else {
 			tmptitle = make([]byte, sl)

@@ -98,7 +98,7 @@ func (d *dlmsal) recvcipheredpdu(rtag base.CosemTag, ded bool, usegeneral bool) 
 			return tag, nil, err
 		}
 		var tmptitle []byte
-		if len(d.tmpbuffer) <= int(sl) {
+		if len(d.tmpbuffer) >= int(sl) {
 			tmptitle = d.tmpbuffer[:sl]
 		} else {
 			tmptitle = make([]byte, sl)
