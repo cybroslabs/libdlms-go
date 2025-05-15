@@ -103,7 +103,7 @@ func (w *maclayer) logf(format string, v ...any) {
 
 func (w *maclayer) Close() error {
 	if !w.isopen {
-		return nil
+		return w.transport.Close() // a bit questionable
 	}
 	err := w.writeout()
 	if err != nil {

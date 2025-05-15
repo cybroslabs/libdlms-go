@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/cybroslabs/libdlms-go/base"
 	"github.com/cybroslabs/libdlms-go/gcm"
@@ -56,11 +57,64 @@ type DlmsClient interface {
 
 type tmpbuffer [128]byte
 
+type dlmsaltransport struct {
+	base.Stream
+	isopen    bool // this is now handled outside
+	transport base.Stream
+}
+
+func (dt *dlmsaltransport) Read(p []byte) (n int, err error) {
+	n, err = dt.transport.Read(p)
+	if err != nil && !errors.Is(err, io.EOF) {
+		dt.isopen = false
+	}
+	return
+}
+
+func (dt *dlmsaltransport) Close() error {
+	return dt.transport.Close()
+}
+
+func (dt *dlmsaltransport) Open() error {
+	return dt.transport.Open()
+}
+
+func (dt *dlmsaltransport) Disconnect() error {
+	return dt.transport.Disconnect()
+}
+
+func (dt *dlmsaltransport) SetLogger(logger *zap.SugaredLogger) {
+	dt.transport.SetLogger(logger)
+}
+
+func (dt *dlmsaltransport) SetDeadline(t time.Time) {
+	dt.transport.SetDeadline(t)
+}
+
+func (dt *dlmsaltransport) SetTimeout(t time.Duration) {
+	dt.transport.SetTimeout(t)
+}
+
+func (dt *dlmsaltransport) SetMaxReceivedBytes(m int64) {
+	dt.transport.SetMaxReceivedBytes(m)
+}
+
+func (dt *dlmsaltransport) Write(src []byte) (err error) {
+	err = dt.transport.Write(src)
+	if err != nil {
+		dt.isopen = false // forcibly close during malfunction
+	}
+	return
+}
+
+func (dt *dlmsaltransport) GetRxTxBytes() (int64, int64) {
+	return dt.transport.GetRxTxBytes()
+}
+
 type dlmsal struct {
-	transport      base.Stream
+	transport      *dlmsaltransport
 	logger         *zap.SugaredLogger
 	settings       *DlmsSettings
-	isopen         bool
 	aareres        aaResponse
 	maxPduSendSize int
 
@@ -217,11 +271,13 @@ func New(transport base.Stream, settings *DlmsSettings) DlmsClient {
 		settings.invokebyte |= 0x40
 	}
 	return &dlmsal{
-		transport: transport,
-		logger:    nil,
-		settings:  settings,
-		isopen:    false,
-		invokeid:  0,
+		transport: &dlmsaltransport{
+			isopen:    false,
+			transport: transport,
+		},
+		logger:   nil,
+		settings: settings,
+		invokeid: 0,
 	}
 }
 
@@ -232,21 +288,24 @@ func (w *dlmsal) logf(format string, v ...any) {
 }
 
 func (d *dlmsal) Close() error {
-	if !d.isopen {
-		return nil
+	if !d.transport.isopen {
+		return d.transport.Close() // a bit questionable
 	}
+	d.transport.isopen = false // close that preemtpively, not ideal...
 
 	rl, err := encodeRLRQ(d.settings)
 	if err != nil {
+		_ = d.transport.Close() // close lower layers at all cost
 		return err
 	}
 	err = d.transport.Write(rl)
 	if err != nil {
+		_ = d.transport.Close() // close lower layers at all cost
 		return err
 	}
 	_, err = d.smallreadout() // yes, this is bullshit
-	d.isopen = false
-	if err != nil { // just ignore data itself as simulator returns some weird shit (based on e650 maybe)
+	if err != nil {           // just ignore data itself as simulator returns some weird shit (based on e650 maybe)
+		_ = d.transport.Close() // close lower layers at all cost
 		return err
 	}
 
@@ -254,7 +313,7 @@ func (d *dlmsal) Close() error {
 }
 
 func (d *dlmsal) Disconnect() error {
-	d.isopen = false
+	d.transport.isopen = false
 	return d.transport.Disconnect()
 }
 
@@ -298,7 +357,7 @@ func (d *dlmsal) logstate(st bool) bool {
 }
 
 func (d *dlmsal) Open() error { // login and shits
-	if d.isopen {
+	if d.transport.isopen {
 		return nil
 	}
 	if err := d.transport.Open(); err != nil {
@@ -423,7 +482,7 @@ func (d *dlmsal) Open() error { // login and shits
 
 	d.settings.VAAddress = d.aareres.initiateResponse.VAAddress // returning from interface, a bit hacky yes
 
-	d.isopen = true
+	d.transport.isopen = true
 	return nil
 }
 

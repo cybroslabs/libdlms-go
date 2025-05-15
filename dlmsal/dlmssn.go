@@ -9,7 +9,7 @@ import (
 
 // SN func read, for now it should be enough
 func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
-	if !d.isopen {
+	if !d.transport.isopen {
 		return nil, base.ErrNotOpened
 	}
 
@@ -81,7 +81,7 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 }
 
 func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream, error) {
-	if !d.isopen {
+	if !d.transport.isopen {
 		return nil, base.ErrNotOpened
 	}
 
@@ -145,7 +145,7 @@ func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream,
 
 // write support here
 func (d *dlmsal) Write(items []DlmsSNRequestItem) ([]base.DlmsResultTag, error) {
-	if !d.isopen {
+	if !d.transport.isopen {
 		return nil, base.ErrNotOpened
 	}
 

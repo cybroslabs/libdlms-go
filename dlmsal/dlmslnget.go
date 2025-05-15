@@ -400,7 +400,7 @@ func (ln *dlmsalget) Read(p []byte) (n int, err error) { // this will go to data
 }
 
 func (d *dlmsal) Get(items []DlmsLNRequestItem) ([]DlmsData, error) {
-	if !d.isopen {
+	if !d.transport.isopen {
 		return nil, base.ErrNotOpened
 	}
 
@@ -409,7 +409,7 @@ func (d *dlmsal) Get(items []DlmsLNRequestItem) ([]DlmsData, error) {
 }
 
 func (d *dlmsal) GetStream(item DlmsLNRequestItem, inmem bool) (DlmsDataStream, error) {
-	if !d.isopen {
+	if !d.transport.isopen {
 		return nil, base.ErrNotOpened
 	}
 

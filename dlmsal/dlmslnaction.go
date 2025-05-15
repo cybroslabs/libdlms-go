@@ -328,7 +328,7 @@ func (ln *dlmsalaction) Read(p []byte) (n int, err error) { // this will go to d
 
 // action part, only single action is supported, not list of actions, at least not yet, fuck support everything is a bit pointless
 func (d *dlmsal) Action(item DlmsLNRequestItem) (data *DlmsData, err error) { // todo blocking support in case of really big action
-	if !d.isopen {
+	if !d.transport.isopen {
 		return nil, base.ErrNotOpened
 	}
 

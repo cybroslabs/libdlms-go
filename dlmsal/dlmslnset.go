@@ -170,7 +170,7 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]base.DlmsResultTag, error
 }
 
 func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err error) {
-	if !al.isopen {
+	if !al.transport.isopen {
 		return nil, base.ErrNotOpened
 	}
 
