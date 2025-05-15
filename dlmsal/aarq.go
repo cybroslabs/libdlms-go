@@ -85,7 +85,7 @@ func putsecvalues(dst *bytes.Buffer, settings *DlmsSettings) {
 func putsystitle(dst *bytes.Buffer, settings *DlmsSettings) {
 	switch settings.AuthenticationMechanismId {
 	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa:
-		encodetag2(dst, base.BERTypeContext|base.BERTypeConstructed|base.PduTypeCallingAPTitle, 0x04, settings.systemtitle)
+		encodetag2(dst, base.BERTypeContext|base.BERTypeConstructed|base.PduTypeCallingAPTitle, 0x04, settings.clientsystemtitle)
 	}
 }
 
@@ -140,7 +140,7 @@ func (d *dlmsal) createxdlms(dst *bytes.Buffer) (err error) {
 		if s.ClientPrivateKey == nil {
 			return fmt.Errorf("ClientPrivateKey not set")
 		}
-		xdlms, err = ecdsasign(s.systemtitle, nil, xdlms, s.ClientPrivateKey)
+		xdlms, err = ecdsasign(s.clientsystemtitle, nil, xdlms, s.ClientPrivateKey)
 		if err != nil {
 			return
 		}

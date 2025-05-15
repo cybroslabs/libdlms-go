@@ -23,11 +23,11 @@ func (d *dlmsal) encryptpacket(tag byte, apdu []byte, ded bool) ([]byte, error) 
 	d.cryptbuffer[0] = tag
 	off := 1
 	if usegeneral {
-		if len(s.systemtitle) != 8 { // this seems to be so hardcoded
-			return nil, fmt.Errorf("invalid client system title length %d", len(s.systemtitle))
+		if len(s.clientsystemtitle) != 8 { // this seems to be so hardcoded
+			return nil, fmt.Errorf("invalid client system title length %d", len(s.clientsystemtitle))
 		}
 		d.cryptbuffer[1] = 8
-		copy(d.cryptbuffer[2:], s.systemtitle)
+		copy(d.cryptbuffer[2:], s.clientsystemtitle)
 		off += 9
 	}
 	off += encodelength2(d.cryptbuffer[off:], uint(wl+5))

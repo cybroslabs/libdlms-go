@@ -71,7 +71,7 @@ type dlmsal struct {
 	cryptbuffer []byte       // reusable crypt buffer
 }
 
-type DlmsSettings struct {
+type DlmsSettings struct { // damn too many settings
 	ConformanceBlock                uint32
 	MaxPduRecvSize                  int
 	VAAddress                       int16
@@ -90,20 +90,20 @@ type DlmsSettings struct {
 	ServerUserId                    byte
 	ClientCertificate               *x509.Certificate
 	ClientPrivateKey                *ecdsa.PrivateKey
-	ServerCertificate               *x509.Certificate
+	ServerCertificate               *x509.Certificate // could be returned during AARE
 	ServerAuthenticationMechanismId base.Authentication
 	PerformSigning                  bool
 	UseGeneralGloDedCiphering       bool
 
 	// private part
-	ctos         []byte
-	invokebyte   byte
-	password     []byte
-	gcm          gcm.Gcm
-	systemtitle  []byte
-	framecounter uint32
-	dedgcm       gcm.Gcm
-	dedicatedkey []byte
+	ctos              []byte
+	invokebyte        byte
+	password          []byte
+	gcm               gcm.Gcm
+	clientsystemtitle []byte
+	framecounter      uint32
+	dedgcm            gcm.Gcm
+	dedicatedkey      []byte
 }
 
 func (d *DlmsSettings) SetDedicatedKey(key []byte, g gcm.Gcm) {
@@ -172,11 +172,11 @@ func NewSettingsWithGmacLN(systemtitle []byte, g gcm.Gcm, ctoshash []byte, fc ui
 			base.ConformanceBlockBlockTransferWithAction | base.ConformanceBlockAction | base.ConformanceBlockGet | base.ConformanceBlockSet |
 			base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences | base.ConformanceBlockAttribute0SupportedWithGet |
 			base.ConformanceBlockGeneralProtection,
-		systemtitle:  newcopy(systemtitle),
-		gcm:          g,
-		password:     newcopy(ctoshash),
-		framecounter: fc,
-		Security:     base.SecurityEncryption | base.SecurityAuthentication,
+		clientsystemtitle: newcopy(systemtitle),
+		gcm:               g,
+		password:          newcopy(ctoshash),
+		framecounter:      fc,
+		Security:          base.SecurityEncryption | base.SecurityAuthentication,
 	}
 	ret.ctos = ret.password // just reference
 	return &ret, nil
@@ -198,11 +198,11 @@ func NewSettingsWithEcdsaLN(systemtitle []byte, g gcm.Gcm, ctoshash []byte, fc u
 			base.ConformanceBlockBlockTransferWithAction | base.ConformanceBlockAction | base.ConformanceBlockGet | base.ConformanceBlockSet |
 			base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences | base.ConformanceBlockAttribute0SupportedWithGet |
 			base.ConformanceBlockGeneralProtection,
-		systemtitle:  newcopy(systemtitle),
-		gcm:          g,
-		password:     newcopy(ctoshash),
-		framecounter: fc,
-		Security:     base.SecurityEncryption | base.SecurityAuthentication | base.SecuritySuite2,
+		clientsystemtitle: newcopy(systemtitle),
+		gcm:               g,
+		password:          newcopy(ctoshash),
+		framecounter:      fc,
+		Security:          base.SecurityEncryption | base.SecurityAuthentication | base.SecuritySuite2,
 	}
 	ret.ctos = ret.password // just reference
 	return &ret, nil
