@@ -15,8 +15,8 @@ import (
 
 const (
 	maxsmallreadout  = 2048
-	pduoverhead      = 6 + gcm.GCM_TAG_LENGTH + 9  // no block header, just length+tag and encoded systitle, 8 bytes + length byte
-	pdublockoverhead = 16 + gcm.GCM_TAG_LENGTH + 9 // additional block header here
+	pduoverhead      = 6 + 5 + gcm.GCM_TAG_LENGTH + 9  // no block header, just length+tag and encoded systitle, 8 bytes + length byte
+	pdublockoverhead = 16 + 5 + gcm.GCM_TAG_LENGTH + 9 // additional block header here
 )
 
 type DlmsSNRequestItem struct {
