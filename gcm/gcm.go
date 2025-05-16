@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"slices"
 )
 
 const (
@@ -74,8 +75,8 @@ func NewGCM(ek []byte, ak []byte, systemtitlec []byte, ctos []byte) (Gcm, error)
 	g := gcm{
 		aes: aa,
 	}
-	g.systemtitleC = append([]byte{}, systemtitlec...)
-	g.ctos = append([]byte{}, ctos...)
+	g.systemtitleC = slices.Clone(systemtitlec)
+	g.ctos = slices.Clone(ctos)
 	copy(g.aadbuf[1:], ak)
 	g.aad = g.aadbuf[:1+len(ak)]
 	g.ak = g.aadbuf[1 : 1+len(ak)]
@@ -116,8 +117,8 @@ func (g *gcm) Setup(systemtitleS []byte, stoc []byte) error {
 	if len(systemtitleS) != 8 {
 		return fmt.Errorf("systitle has to be 8 bytes long")
 	}
-	g.systemtitleS = append([]byte{}, systemtitleS...)
-	g.stoc = append([]byte{}, stoc...)
+	g.systemtitleS = slices.Clone(systemtitleS)
+	g.stoc = slices.Clone(stoc)
 	return nil
 }
 
