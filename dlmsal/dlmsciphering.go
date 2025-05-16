@@ -14,7 +14,7 @@ func (d *dlmsal) encryptpacket(tag byte, apdu []byte, ded bool) ([]byte, error) 
 	usegeneral := tag == byte(base.TagGeneralGloCiphering) || tag == byte(base.TagGeneralDedCiphering)
 	s := d.settings
 	// lets panic in case of nil gcm -> program fault shouldnt happen at all
-	wl, _ := s.gcm.GetEncryptLength(byte(s.Security), apdu)
+	wl, _ := s.cipher.GetEncryptLength(byte(s.Security), apdu)
 	if cap(d.cryptbuffer) < wl+20 { // 11 bytes for header and 9 for possible general glo/ded ciphering encoded systemtitle, this is madness, should be set anyway that title
 		d.cryptbuffer = make([]byte, wl+20)
 	} else {
@@ -39,9 +39,9 @@ func (d *dlmsal) encryptpacket(tag byte, apdu []byte, ded bool) ([]byte, error) 
 	// in this state, encrypt cant remake input reusable buffer
 	var err error
 	if ded {
-		_, err = s.dedgcm.Encrypt(d.cryptbuffer[off:], byte(s.Security), s.framecounter, apdu) // this is weird and needs to be tested well
+		_, err = s.dedcipher.Encrypt(d.cryptbuffer[off:], byte(s.Security), s.framecounter, apdu) // this is weird and needs to be tested well
 	} else {
-		_, err = s.gcm.Encrypt(d.cryptbuffer[off:], byte(s.Security), s.framecounter, apdu)
+		_, err = s.cipher.Encrypt(d.cryptbuffer[off:], byte(s.Security), s.framecounter, apdu)
 	}
 	s.framecounter++
 	return d.cryptbuffer[:off+wl], err
@@ -91,15 +91,15 @@ func (d *dlmsal) decryptpacket(apdu []byte, ded bool) ([]byte, error) { // not c
 
 	fc := binary.BigEndian.Uint32(apdu[1:])
 	if ded {
-		if s.dedgcm == nil {
+		if s.dedcipher == nil {
 			return nil, fmt.Errorf("no dedicated gcm set for ciphering")
 		}
-		d.cryptbuffer, err = s.dedgcm.Decrypt(d.cryptbuffer, apdu[0], fc, apdu[5:])
+		d.cryptbuffer, err = s.dedcipher.Decrypt(d.cryptbuffer, apdu[0], fc, apdu[5:])
 	} else {
-		if s.gcm == nil {
+		if s.cipher == nil {
 			return nil, fmt.Errorf("no global gcm set for ciphering")
 		}
-		d.cryptbuffer, err = s.gcm.Decrypt(d.cryptbuffer, apdu[0], fc, apdu[5:]) // set cryptbuffer just to be reused
+		d.cryptbuffer, err = s.cipher.Decrypt(d.cryptbuffer, apdu[0], fc, apdu[5:]) // set cryptbuffer just to be reused
 	}
 	if err != nil {
 		return nil, err

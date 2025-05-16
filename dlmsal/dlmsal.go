@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"github.com/cybroslabs/libdlms-go/base"
-	"github.com/cybroslabs/libdlms-go/gcm"
+	"github.com/cybroslabs/libdlms-go/ciphering"
 	"go.uber.org/zap"
 )
 
 const (
 	maxsmallreadout  = 2048
-	pduoverhead      = 6 + 5 + gcm.GCM_TAG_LENGTH + 9  // no block header, just length+tag and encoded systitle, 8 bytes + length byte
-	pdublockoverhead = 16 + 5 + gcm.GCM_TAG_LENGTH + 9 // additional block header here
+	pduoverhead      = 6 + 5 + ciphering.GCM_TAG_LENGTH + 9  // no block header, just length+tag and encoded systitle, 8 bytes + length byte
+	pdublockoverhead = 16 + 5 + ciphering.GCM_TAG_LENGTH + 9 // additional block header here
 )
 
 type DlmsSNRequestItem struct {
@@ -140,30 +140,25 @@ type DlmsSettings struct { // damn too many settings
 	ApplicationContext              base.ApplicationContext
 	DontEncryptUserInformation      bool
 	UserId                          *byte
-	ServerUserId                    byte
-	ClientCertificate               *x509.Certificate
-	ClientPrivateKey                *ecdsa.PrivateKey
-	ServerCertificate               *x509.Certificate // could be returned during AARE
 	ServerAuthenticationMechanismId base.Authentication
-	PerformSigning                  bool
 	UseGeneralGloDedCiphering       bool
 
 	// private part
 	ctos              []byte
 	invokebyte        byte
 	password          []byte
-	gcm               gcm.Gcm
+	cipher            ciphering.Ciphering
 	clientsystemtitle []byte
 	framecounter      uint32
-	dedgcm            gcm.Gcm
+	dedcipher         ciphering.Ciphering
 	dedicatedkey      []byte
 }
 
-func (d *DlmsSettings) SetDedicatedKey(key []byte, g gcm.Gcm) {
+func (d *DlmsSettings) SetDedicatedKey(key []byte, g ciphering.Ciphering) {
 	if key == nil {
-		d.dedgcm = nil
+		d.dedcipher = nil
 	} else {
-		d.dedgcm = g
+		d.dedcipher = g
 		d.dedicatedkey = newcopy(key) // regardless error
 	}
 }
@@ -209,7 +204,7 @@ func NewSettingsNoAuthenticationLN() (*DlmsSettings, error) {
 	}, nil
 }
 
-func NewSettingsWithGmacLN(systemtitle []byte, g gcm.Gcm, ctoshash []byte, fc uint32) (*DlmsSettings, error) {
+func NewSettingsWithGmacLN(systemtitle []byte, g ciphering.Ciphering, ctoshash []byte, fc uint32) (*DlmsSettings, error) {
 	if len(systemtitle) != 8 {
 		return nil, fmt.Errorf("systemtitle has to be 8 bytes long")
 	}
@@ -226,7 +221,7 @@ func NewSettingsWithGmacLN(systemtitle []byte, g gcm.Gcm, ctoshash []byte, fc ui
 			base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences | base.ConformanceBlockAttribute0SupportedWithGet |
 			base.ConformanceBlockGeneralProtection,
 		clientsystemtitle: newcopy(systemtitle),
-		gcm:               g,
+		cipher:            g,
 		password:          newcopy(ctoshash),
 		framecounter:      fc,
 		Security:          base.SecurityEncryption | base.SecurityAuthentication,
@@ -235,7 +230,7 @@ func NewSettingsWithGmacLN(systemtitle []byte, g gcm.Gcm, ctoshash []byte, fc ui
 	return &ret, nil
 }
 
-func NewSettingsWithEcdsaLN(systemtitle []byte, g gcm.Gcm, ctoshash []byte, fc uint32, serverCertificate *x509.Certificate) (*DlmsSettings, error) {
+func NewSettingsWithEcdsaLN(systemtitle []byte, g ciphering.Ciphering, ctoshash []byte, fc uint32, serverCertificate *x509.Certificate) (*DlmsSettings, error) {
 	if len(systemtitle) != 8 {
 		return nil, fmt.Errorf("systemtitle has to be 8 bytes long")
 	}
@@ -259,11 +254,10 @@ func NewSettingsWithEcdsaLN(systemtitle []byte, g gcm.Gcm, ctoshash []byte, fc u
 			base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences | base.ConformanceBlockAttribute0SupportedWithGet |
 			base.ConformanceBlockGeneralProtection,
 		clientsystemtitle: newcopy(systemtitle),
-		gcm:               g,
+		cipher:            g,
 		password:          newcopy(ctoshash),
 		framecounter:      fc,
 		Security:          base.SecurityEncryption | base.SecurityAuthentication | base.SecuritySuite2,
-		ServerCertificate: serverCertificate,
 	}
 
 	ret.ctos = ret.password // just reference
@@ -441,20 +435,20 @@ func (d *dlmsal) Open() error { // login and shits
 	if uitag == nil {
 		return fmt.Errorf("no user information tag found")
 	}
-	if d.settings.gcm != nil {
+	if d.settings.cipher != nil {
 		if mask != 3 {
 			return fmt.Errorf("gcm is apparently enabled, but no stoc or serversystemtitle found")
 		}
-		err = d.settings.gcm.Setup(d.settings.ServerSystemTitle, d.settings.StoC)
+		err = d.settings.cipher.Setup(d.settings.ServerSystemTitle, d.settings.StoC)
 		if err != nil {
 			return err
 		}
 	}
-	if d.settings.dedgcm != nil { // a bit questionable, if there is already gcm, there should be also stoc and systemtitles
+	if d.settings.dedcipher != nil { // a bit questionable, if there is already gcm, there should be also stoc and systemtitles
 		if mask != 3 {
 			return fmt.Errorf("dedicated gcm is apparently enabled, but no stoc or serversystemtitle found")
 		}
-		err = d.settings.dedgcm.Setup(d.settings.ServerSystemTitle, d.settings.StoC)
+		err = d.settings.dedcipher.Setup(d.settings.ServerSystemTitle, d.settings.StoC)
 		if err != nil {
 			return err
 		}

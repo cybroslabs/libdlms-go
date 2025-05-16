@@ -1,60 +1,64 @@
-package gcm
+package ciphering
 
 import (
 	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/cybroslabs/hes-2-apis/gen/go/crypto"
 	"github.com/cybroslabs/hes-2-apis/gen/go/services/svccrypto"
+	"github.com/cybroslabs/libdlms-go/base"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"k8s.io/utils/ptr"
 )
 
-type GcmKMS interface {
-	Gcm
+type CipheringKMS interface {
+	Ciphering
 	Dispose()
 }
 
-type GcmKMSSettings struct {
-	Logger        *zap.SugaredLogger
-	ServiceClient svccrypto.CryproServiceClient
-	AccessLevel   string
-	SerialNumber  string
-	DriverId      string
-	ClientTitle   []byte
-	CtoS          []byte
-	Context       context.Context
+type CipheringKMSSettings struct {
+	Logger                    *zap.SugaredLogger
+	ServiceClient             svccrypto.CryproServiceClient
+	AccessLevel               string
+	SerialNumber              string
+	DriverId                  string
+	ClientTitle               []byte
+	CtoS                      []byte
+	Context                   context.Context
+	AuthenticationMechanismId base.Authentication
 }
 
-type gcmkms struct {
-	logger        *zap.SugaredLogger
-	serviceclient svccrypto.CryproServiceClient
-	accessLevel   string
-	serialNumber  string
-	driverId      string
-	clientTitle   []byte
-	ctos          []byte
-	initdone      bool
-	ctx           context.Context
-	stream        grpc.BidiStreamingClient[crypto.DlmsIn, crypto.DlmsOut]
-	cmdid         uint64
+type cipheringkms struct {
+	logger                    *zap.SugaredLogger
+	serviceclient             svccrypto.CryproServiceClient
+	accessLevel               string
+	serialNumber              string
+	driverId                  string
+	clientTitle               []byte
+	ctos                      []byte
+	initdone                  bool
+	ctx                       context.Context
+	stream                    grpc.BidiStreamingClient[crypto.DlmsIn, crypto.DlmsOut]
+	cmdid                     uint64
+	authenticationMechanismId base.Authentication
 }
 
 // Decrypt implements Gcm.
-func (g *gcmkms) Decrypt(ret []byte, sc byte, fc uint32, apdu []byte) ([]byte, error) {
+func (g *cipheringkms) Decrypt(ret []byte, sc byte, fc uint32, apdu []byte) ([]byte, error) {
 	return g.Decrypt2(ret, sc, sc, fc, apdu)
 }
 
 // Encrypt implements Gcm.
-func (g *gcmkms) Encrypt(ret []byte, sc byte, fc uint32, apdu []byte) ([]byte, error) {
+func (g *cipheringkms) Encrypt(ret []byte, sc byte, fc uint32, apdu []byte) ([]byte, error) {
 	return g.Encrypt2(ret, sc, sc, fc, apdu)
 }
 
-func (g *gcmkms) sendcmd(input *crypto.DlmsIn) ([]byte, error) {
+func (g *cipheringkms) sendcmd(input *crypto.DlmsIn) ([]byte, error) {
 	input.SetId(g.cmdid)
 	g.cmdid++
 	err := g.stream.Send(input)
@@ -75,7 +79,7 @@ func (g *gcmkms) sendcmd(input *crypto.DlmsIn) ([]byte, error) {
 	return out.GetData(), nil
 }
 
-func (g *gcmkms) init() (err error) {
+func (g *cipheringkms) init() (err error) {
 	if g.initdone {
 		return
 	}
@@ -103,7 +107,7 @@ func (g *gcmkms) init() (err error) {
 	return
 }
 
-func (g *gcmkms) Setup(systemtitleS []byte, stoc []byte) (err error) {
+func (g *cipheringkms) Setup(systemtitleS []byte, stoc []byte) (err error) {
 	err = g.init()
 	if err != nil {
 		return
@@ -118,8 +122,37 @@ func (g *gcmkms) Setup(systemtitleS []byte, stoc []byte) (err error) {
 	return
 }
 
-func (g *gcmkms) Hash(sc byte, fc uint32) ([]byte, error) {
+func setcryptomode(a base.Authentication) (cset crypto.Hash, err error) {
+	switch a {
+	case base.AuthenticationNone:
+		err = fmt.Errorf("no authentication mechanism set")
+	case base.AuthenticationLow:
+		err = fmt.Errorf("low authentication is not supported")
+	case base.AuthenticationHigh:
+		err = fmt.Errorf("high authentication is not supported")
+	case base.AuthenticationHighMD5:
+		cset = crypto.Hash_HASH_MD5
+	case base.AuthenticationHighSHA1:
+		cset = crypto.Hash_HASH_SHA_1
+	case base.AuthenticationHighGmac:
+		cset = crypto.Hash_HASH_GMAC
+	case base.AuthenticationHighSha256:
+		cset = crypto.Hash_HASH_SHA_256
+	case base.AuthenticationHighEcdsa:
+		cset = crypto.Hash_HASH_ECDSA
+	default:
+		err = fmt.Errorf("invalid authentication mechanism: %v", a)
+	}
+	return
+}
+
+func (g *cipheringkms) Hash(sc byte, fc uint32) ([]byte, error) {
 	err := g.init()
+	if err != nil {
+		return nil, err
+	}
+
+	cset, err := setcryptomode(g.authenticationMechanismId)
 	if err != nil {
 		return nil, err
 	}
@@ -127,15 +160,20 @@ func (g *gcmkms) Hash(sc byte, fc uint32) ([]byte, error) {
 	return g.sendcmd(crypto.DlmsIn_builder{
 		Hash: crypto.DlmsHash_builder{
 			Direction:       ptr.To(crypto.HashDirection_CLIENT_TO_SERVER),
-			Mode:            ptr.To(crypto.Hash_HASH_GMAC),
+			Mode:            ptr.To(cset),
 			FrameCounter:    &fc,
 			SecurityControl: ptr.To(uint32(sc)),
 		}.Build(),
 	}.Build())
 }
 
-func (g *gcmkms) Verify(sc byte, fc uint32, hash []byte) (bool, error) {
+func (g *cipheringkms) Verify(sc byte, fc uint32, hash []byte) (bool, error) {
 	err := g.init()
+	if err != nil {
+		return false, err
+	}
+
+	cset, err := setcryptomode(g.authenticationMechanismId)
 	if err != nil {
 		return false, err
 	}
@@ -143,7 +181,7 @@ func (g *gcmkms) Verify(sc byte, fc uint32, hash []byte) (bool, error) {
 	_, err = g.sendcmd(crypto.DlmsIn_builder{
 		AuthVerify: crypto.DlmsAuthVerify_builder{
 			Direction:       ptr.To(crypto.HashDirection_SERVER_TO_CLIENT),
-			Mode:            ptr.To(crypto.Hash_HASH_GMAC),
+			Mode:            ptr.To(cset),
 			FrameCounter:    &fc,
 			SecurityControl: ptr.To(uint32(sc)),
 			Data:            hash,
@@ -156,7 +194,7 @@ func (g *gcmkms) Verify(sc byte, fc uint32, hash []byte) (bool, error) {
 }
 
 // Decrypt2 implements Gcm.
-func (g *gcmkms) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error) {
+func (g *cipheringkms) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error) {
 	if scContent != scControl {
 		return nil, fmt.Errorf("scContent %02X != scControl %02X", scContent, scControl)
 	}
@@ -186,7 +224,7 @@ func (g *gcmkms) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32,
 }
 
 // Encrypt2 implements Gcm.
-func (g *gcmkms) Encrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error) { // check systitle equality, but it really hurts sending it every packet
+func (g *cipheringkms) Encrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error) { // check systitle equality, but it really hurts sending it every packet
 	if scContent != scControl {
 		return nil, fmt.Errorf("scContent %02X != scControl %02X", scContent, scControl)
 	}
@@ -215,12 +253,12 @@ func (g *gcmkms) Encrypt2(ret []byte, scControl byte, scContent byte, fc uint32,
 }
 
 // GetDecryptorStream implements Gcm.
-func (g *gcmkms) GetDecryptorStream(sc byte, fc uint32, apdu io.Reader) (io.Reader, error) {
+func (g *cipheringkms) GetDecryptorStream(sc byte, fc uint32, apdu io.Reader) (io.Reader, error) {
 	return g.GetDecryptorStream2(sc, sc, fc, apdu)
 }
 
 // GetDecryptorStream2 implements Gcm.
-func (g *gcmkms) GetDecryptorStream2(scControl byte, scContent byte, fc uint32, apdu io.Reader) (io.Reader, error) {
+func (g *cipheringkms) GetDecryptorStream2(scControl byte, scContent byte, fc uint32, apdu io.Reader) (io.Reader, error) {
 	data, err := io.ReadAll(apdu) // not streamed at all in this case
 	if err != nil {
 		return nil, err
@@ -235,7 +273,7 @@ func (g *gcmkms) GetDecryptorStream2(scControl byte, scContent byte, fc uint32, 
 }
 
 // GetEncryptLength implements Gcm.
-func (g *gcmkms) GetEncryptLength(scControl byte, apdu []byte) (int, error) {
+func (g *cipheringkms) GetEncryptLength(scControl byte, apdu []byte) (int, error) {
 	switch scControl & 0x30 {
 	case 0x10, 0x30:
 		return len(apdu) + GCM_TAG_LENGTH, nil
@@ -244,24 +282,25 @@ func (g *gcmkms) GetEncryptLength(scControl byte, apdu []byte) (int, error) {
 	panic(fmt.Sprintf("GetEncryptLength not implemented for scControl %02X", scControl)) // shouoldnt reach this point
 }
 
-func (g *gcmkms) Dispose() {
+func (g *cipheringkms) Dispose() {
 	if g.initdone {
 		_ = g.stream.CloseSend()
 	}
 }
 
 // this is not thread safe at all
-func NewGCMKMS(settings *GcmKMSSettings) (GcmKMS, error) { // so only suite 0 right now, just proof of concept
-	ret := &gcmkms{
-		logger:        settings.Logger,
-		serviceclient: settings.ServiceClient,
-		accessLevel:   settings.AccessLevel,
-		serialNumber:  settings.SerialNumber,
-		driverId:      settings.DriverId,
-		initdone:      false,
-		ctx:           settings.Context,
+func NewCipheringKMS(settings *CipheringKMSSettings) (CipheringKMS, error) { // so only suite 0 right now, just proof of concept
+	ret := &cipheringkms{
+		logger:                    settings.Logger,
+		serviceclient:             settings.ServiceClient,
+		accessLevel:               settings.AccessLevel,
+		serialNumber:              settings.SerialNumber,
+		driverId:                  settings.DriverId,
+		initdone:                  false,
+		ctx:                       settings.Context,
+		authenticationMechanismId: settings.AuthenticationMechanismId,
+		clientTitle:               slices.Clone(settings.ClientTitle),
+		ctos:                      slices.Clone(settings.CtoS),
 	}
-	ret.clientTitle = append(ret.clientTitle, settings.ClientTitle...) // get copy
-	ret.ctos = append(ret.ctos, settings.CtoS...)                      // get copy
 	return ret, nil
 }

@@ -6,7 +6,7 @@ import (
 	"io"
 
 	"github.com/cybroslabs/libdlms-go/base"
-	"github.com/cybroslabs/libdlms-go/gcm"
+	"github.com/cybroslabs/libdlms-go/ciphering"
 )
 
 // send and optionally encrypt packet at pdu to transport layer, returns also answer stream object with transparent ciphering and tag reading, hell
@@ -17,7 +17,7 @@ func (d *dlmsal) sendpdu() (tag base.CosemTag, str io.Reader, err error) {
 	}
 	b := local.Bytes()
 	s := d.settings
-	if s.dedgcm != nil {
+	if s.dedcipher != nil {
 		if s.UseGeneralGloDedCiphering {
 			tag = base.TagGeneralDedCiphering
 		} else {
@@ -37,7 +37,7 @@ func (d *dlmsal) sendpdu() (tag base.CosemTag, str io.Reader, err error) {
 			}
 		}
 		b, err = d.encryptpacket(byte(tag), b, true)
-	} else if s.gcm != nil {
+	} else if s.cipher != nil {
 		if s.UseGeneralGloDedCiphering {
 			tag = base.TagGeneralGloCiphering
 		} else {
@@ -109,17 +109,17 @@ func (d *dlmsal) recvcipheredpdu(rtag base.CosemTag, ded bool, usegeneral bool) 
 		}
 	}
 
-	var gcm gcm.Gcm
+	var gcm ciphering.Ciphering
 	if ded {
-		if s.dedgcm == nil {
+		if s.dedcipher == nil {
 			return tag, nil, fmt.Errorf("no dedicated ciphering set")
 		}
-		gcm = s.dedgcm
+		gcm = s.dedcipher
 	} else {
-		if s.gcm == nil {
+		if s.cipher == nil {
 			return tag, nil, fmt.Errorf("no global ciphering set")
 		}
-		gcm = s.gcm
+		gcm = s.cipher
 	}
 	l, _, err := decodelength(d.transport, &d.tmpbuffer)
 	if err != nil {

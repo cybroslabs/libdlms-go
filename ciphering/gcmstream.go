@@ -1,4 +1,4 @@
-package gcm
+package ciphering
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 )
 
 type gcmdecstream10 struct { // no tag/hash, no aad, decrypt only
-	master      *gcm
+	master      *ciphering
 	apdu        io.Reader
 	block       [AES_BLOCK_SIZE << 2]byte // space for largest possible ak + one byte for sc, so this, but still at least four block to limit returned data
 	blockoffer  int
@@ -24,7 +24,7 @@ type gcmdecstream10 struct { // no tag/hash, no aad, decrypt only
 	ineof       bool
 }
 
-func newgcmdecstream10(master *gcm, sc byte, src io.Reader) io.Reader {
+func newgcmdecstream10(master *ciphering, sc byte, src io.Reader) io.Reader {
 	ret := gcmdecstream10{master: master, apdu: src, blockoffset: 0, blockread: 0, blockoffer: 0, ineof: false}
 	ret.J0 = master.tmp[:AES_BLOCK_SIZE] // yes, this is reusable hardcore
 	ret.S = master.tmp[AES_BLOCK_SIZE : AES_BLOCK_SIZE<<1]
@@ -127,7 +127,7 @@ func (g *gcmdecstream10) Read(p []byte) (n int, err error) {
 }
 
 type gcmdecstream20 struct { // no tag/hash, no aad, decrypt only
-	master      *gcm
+	master      *ciphering
 	apdu        io.Reader
 	block       [AES_BLOCK_SIZE]byte // can be more than one block here, maybe
 	blockread   int
@@ -136,7 +136,7 @@ type gcmdecstream20 struct { // no tag/hash, no aad, decrypt only
 	ineof       bool
 }
 
-func newgcmdecstream20(master *gcm, src io.Reader) io.Reader {
+func newgcmdecstream20(master *ciphering, src io.Reader) io.Reader {
 	ret := gcmdecstream20{master: master, apdu: src, blockoffset: 0, blockread: 0, ineof: false}
 	ret.J0 = master.tmp[:AES_BLOCK_SIZE] // yes, this is reusable hardcore
 	inc32(ret.J0)
@@ -182,7 +182,7 @@ func (g *gcmdecstream20) Read(p []byte) (n int, err error) {
 }
 
 type gcmdecstream30 struct { // no tag/hash, no aad, decrypt only
-	master      *gcm
+	master      *ciphering
 	apdu        io.Reader
 	block       [AES_BLOCK_SIZE << 2]byte // at least 4 blocks for most large ak, so aad
 	blockread   int
@@ -194,7 +194,7 @@ type gcmdecstream30 struct { // no tag/hash, no aad, decrypt only
 	ineof       bool
 }
 
-func newgcmdecstream30(master *gcm, sc byte, src io.Reader) io.Reader {
+func newgcmdecstream30(master *ciphering, sc byte, src io.Reader) io.Reader {
 	ret := gcmdecstream30{master: master, apdu: src, blockoffset: 0, blockread: 0, cryptsize: 0, ineof: false}
 	ret.J0 = master.tmp[:AES_BLOCK_SIZE] // yes, this is reusable hardcore
 	inc32(ret.J0)

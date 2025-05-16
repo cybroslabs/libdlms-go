@@ -2,7 +2,6 @@ package dlmsal
 
 import (
 	"bytes"
-	"crypto/x509"
 	"encoding/binary"
 	"fmt"
 
@@ -89,13 +88,6 @@ func putsystitle(dst *bytes.Buffer, settings *DlmsSettings) {
 	}
 }
 
-func putclientcertificate(dst *bytes.Buffer, settings *DlmsSettings) {
-	if settings.ClientCertificate == nil {
-		return
-	}
-	encodetag2(dst, base.BERTypeContext|base.BERTypeConstructed|base.PduTypeCallingAEQualifier, 0x04, settings.ClientCertificate.RawTBSCertificate) // or complete Raw? damn complicated
-}
-
 func putuserid(dst *bytes.Buffer, settings *DlmsSettings) {
 	if settings.UserId == nil {
 		return
@@ -111,7 +103,7 @@ func (d *dlmsal) createxdlms(dst *bytes.Buffer) (err error) {
 	s := d.settings
 	var xdlms []byte
 	var subxdlms []byte
-	if s.dedgcm != nil {
+	if s.dedcipher != nil {
 		xdlms = make([]byte, 15+len(s.dedicatedkey))
 		xdlms[0] = byte(base.TagInitiateRequest)
 		xdlms[1] = 0x01
@@ -135,17 +127,6 @@ func (d *dlmsal) createxdlms(dst *bytes.Buffer) (err error) {
 	subxdlms[10] = byte(s.MaxPduRecvSize >> 8) // no limit in maximum received apdu length
 	subxdlms[11] = byte(s.MaxPduRecvSize)
 
-	// optional signing, damn
-	if s.PerformSigning {
-		if s.ClientPrivateKey == nil {
-			return fmt.Errorf("ClientPrivateKey not set")
-		}
-		xdlms, err = ecdsasign(s.clientsystemtitle, nil, xdlms, s.ClientPrivateKey)
-		if err != nil {
-			return
-		}
-	}
-
 	if !s.DontEncryptUserInformation {
 		switch s.AuthenticationMechanismId {
 		case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa: // encrypt this
@@ -163,7 +144,6 @@ func (d *dlmsal) encodeaarq() (out []byte, outnosec []byte, err error) {
 
 	putappctxname(&content, s)
 	putsystitle(&content, s)
-	putclientcertificate(&content, s)
 	putuserid(&content, s)
 	putmechname(&content, s)
 	st := content.Len()
@@ -256,25 +236,13 @@ func (d *dlmsal) parseCalledAEInvocationID(tag aaretag) error {
 		return fmt.Errorf("invalid A5 tag length")
 	}
 	// parse inner tag
-	t, _, i, err := decodetag(tag.data, &d.tmpbuffer)
+	t, _, _, err := decodetag(tag.data, &d.tmpbuffer)
 	if err != nil {
 		return err
 	}
 
-	switch t {
-	case 0x02: // integer
-		if len(i) != 1 {
-			return fmt.Errorf("invalid A5 tag length")
-		}
-		d.settings.ServerUserId = i[0]
-		return nil
-	case 0x04: // octet string, server certificate
-		var err error
-		d.settings.ServerCertificate, err = x509.ParseCertificate(i)
-		return err
-	default:
-		return fmt.Errorf("invalid A5 tag content")
-	}
+	d.logf("parseCalledAEInvocationID, for now, not used much: %02x %02x", tag.tag, t)
+	return nil
 }
 
 func parseSenderAcseRequirements(tag aaretag, tmp *tmpbuffer) (stoc []byte, err error) {

@@ -1,13 +1,23 @@
-package gcm
+package ciphering
 
 import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/ecdsa"
+	"crypto/md5"
+	"crypto/rand"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
+	"crypto/x509"
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math/big"
 	"slices"
+
+	"github.com/cybroslabs/libdlms-go/base"
 )
 
 const (
@@ -16,14 +26,14 @@ const (
 	GCM_TAG_LENGTH     = 12
 )
 
-type GcmDirection byte
+type CipheringDirection byte
 
 const (
 	DirectionClientToServer = 0
 	DirectionServerToClient = 1
 )
 
-type Gcm interface { // add length to the streamer interface? add systitle to constructor? not to copy it every damn time
+type Ciphering interface { // add length to the streamer interface? add systitle to constructor? not to copy it every damn time
 	Setup(systemtitleS []byte, stoc []byte) error
 	Hash(sc byte, fc uint32) ([]byte, error)
 	Verify(sc byte, fc uint32, hash []byte) (bool, error)
@@ -40,7 +50,72 @@ type Gcm interface { // add length to the streamer interface? add systitle to co
 	GetDecryptorStream2(scControl byte, scContent byte, fc uint32, apdu io.Reader) (io.Reader, error)
 }
 
-type gcm struct {
+type CipheringSettings struct {
+	EncryptionKey             []byte
+	AuthenticationKey         []byte
+	ClientTitle               []byte
+	CtoS                      []byte
+	Password                  []byte
+	AuthenticationMechanismId base.Authentication
+	ClientPrivateKey          *ecdsa.PrivateKey
+	ServerCertificate         *x509.Certificate // could be returned during AARE
+}
+
+func (s *CipheringSettings) Validate() error {
+	if s.EncryptionKey != nil {
+		switch len(s.EncryptionKey) {
+		case 16, 24, 32:
+		default:
+			return fmt.Errorf("EK has to be 16, 24 or 32 bytes long")
+		}
+		if s.AuthenticationKey != nil {
+			switch len(s.AuthenticationKey) {
+			case 16, 24, 32:
+			default:
+				return fmt.Errorf("AK has to be 16, 24 or 32 bytes long")
+			}
+		}
+	}
+	if len(s.ClientTitle) != 8 {
+		return fmt.Errorf("systitle has to be 8 bytes long")
+	}
+
+	// check certificate public key and private key
+	if s.ClientPrivateKey != nil {
+		switch s.ClientPrivateKey.Curve.Params().BitSize {
+		case 256, 384:
+		default:
+			return fmt.Errorf("clientPrivateKey is not ecdsa with 256 or 384 bit curve")
+		}
+	}
+	if s.ServerCertificate != nil {
+		switch pub, ok := s.ServerCertificate.PublicKey.(*ecdsa.PublicKey); ok {
+		case true:
+			switch pub.Curve.Params().BitSize {
+			case 256, 384:
+			default:
+				return fmt.Errorf("serverCertificate public key is not ecdsa with 256 or 384 bit curve")
+			}
+		default:
+			return fmt.Errorf("serverCertificate public key is not ecdsa")
+		}
+	}
+	switch s.AuthenticationMechanismId {
+	case base.AuthenticationNone:
+		return fmt.Errorf("invalid authentication mechanism: %v", s.AuthenticationMechanismId)
+	case base.AuthenticationHigh:
+		return fmt.Errorf("high authentication not implemented, this is manufacturer specific mostly")
+	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa: // just panic nil reference anyway, dont if every damn usage of decrypt
+		if s.EncryptionKey == nil {
+			return fmt.Errorf("authentication mechanism %v requires encryption key", s.AuthenticationMechanismId)
+		}
+		return nil
+	default:
+		return fmt.Errorf("invalid authentication mechanism: %v", s.AuthenticationMechanismId)
+	}
+}
+
+type ciphering struct {
 	ak     []byte
 	tmp    [AES_BLOCK_SIZE * 4]byte
 	hl     [16]uint64
@@ -49,43 +124,49 @@ type gcm struct {
 	aad    []byte
 	aadbuf [1 + 32]byte
 
+	password     []byte
 	systemtitleC []byte
 	systemtitleS []byte
 	stoc         []byte
 	ctos         []byte
+
+	authenticationMechanismId base.Authentication
+	clientPrivateKey          *ecdsa.PrivateKey
+	serverCertificate         *x509.Certificate
 }
 
 // no constant arrays in go, but these numbers are black magic
 var last4 = [...]uint64{0x0000, 0x1c20, 0x3840, 0x2460, 0x7080, 0x6ca0, 0x48c0, 0x54e0, 0xe100, 0xfd20, 0xd940, 0xc560, 0x9180, 0x8da0, 0xa9c0, 0xb5e0}
 
-func NewGCM(ek []byte, ak []byte, systemtitlec []byte, ctos []byte) (Gcm, error) {
-	if len(ek) != 16 && len(ek) != 24 && len(ek) != 32 {
-		return nil, fmt.Errorf("EK has to be 16, 24 or 32 bytes long")
-	}
-	if ak != nil && len(ak) != 16 && len(ak) != 24 && len(ak) != 32 {
-		return nil, fmt.Errorf("AK has to be 16, 24 or 32 bytes long")
-	}
-	aa, err := aes.NewCipher(ek)
+func NewCiphering(settings *CipheringSettings) (Ciphering, error) {
+	err := settings.Validate()
 	if err != nil {
 		return nil, err
 	}
-	if len(systemtitlec) != 8 {
-		return nil, fmt.Errorf("systitle has to be 8 bytes long")
+
+	aa, err := aes.NewCipher(settings.EncryptionKey)
+	if err != nil {
+		return nil, err
 	}
-	g := gcm{
-		aes: aa,
+
+	g := &ciphering{
+		aes:                       aa,
+		authenticationMechanismId: settings.AuthenticationMechanismId,
+		clientPrivateKey:          settings.ClientPrivateKey,
+		serverCertificate:         settings.ServerCertificate,
+		systemtitleC:              slices.Clone(settings.ClientTitle),
+		ctos:                      slices.Clone(settings.CtoS),
+		password:                  slices.Clone(settings.Password),
 	}
-	g.systemtitleC = slices.Clone(systemtitlec)
-	g.ctos = slices.Clone(ctos)
-	copy(g.aadbuf[1:], ak)
-	g.aad = g.aadbuf[:1+len(ak)]
-	g.ak = g.aadbuf[1 : 1+len(ak)]
+	copy(g.aadbuf[1:], settings.AuthenticationKey)
+	g.aad = g.aadbuf[:1+len(settings.AuthenticationKey)]
+	g.ak = g.aadbuf[1 : 1+len(settings.AuthenticationKey)]
 	g.make_tables()
-	return &g, nil
+	return g, nil
 }
 
 // using first tmp slot, depends on zero initialized arrays
-func (g *gcm) make_tables() {
+func (g *ciphering) make_tables() {
 	h := g.tmp[:AES_BLOCK_SIZE]
 	g.aes.Encrypt(h, h) // rely on the fact that all bytes in gcm are zero
 
@@ -113,7 +194,7 @@ func (g *gcm) make_tables() {
 	}
 }
 
-func (g *gcm) Setup(systemtitleS []byte, stoc []byte) error {
+func (g *ciphering) Setup(systemtitleS []byte, stoc []byte) error {
 	if len(systemtitleS) != 8 {
 		return fmt.Errorf("systitle has to be 8 bytes long")
 	}
@@ -122,33 +203,148 @@ func (g *gcm) Setup(systemtitleS []byte, stoc []byte) error {
 	return nil
 }
 
-func (g *gcm) Hash(sc byte, fc uint32) ([]byte, error) {
-	e, err := g.encryptinternal(nil, sc, sc, fc, g.systemtitleC, g.stoc)
-	if err != nil {
-		return nil, err
+func (g *ciphering) Hash(sc byte, fc uint32) ([]byte, error) {
+	var hashbuf bytes.Buffer
+	switch g.authenticationMechanismId {
+	case base.AuthenticationLow:
+		return slices.Clone(g.password), nil
+	case base.AuthenticationHighMD5:
+		hashbuf.Write(g.systemtitleS)
+		hashbuf.Write(g.password)
+		h := md5.Sum(hashbuf.Bytes())
+		return h[:], nil
+	case base.AuthenticationHighSHA1:
+		hashbuf.Write(g.systemtitleS)
+		hashbuf.Write(g.password)
+		h := sha1.Sum(hashbuf.Bytes())
+		return h[:], nil
+	case base.AuthenticationHighGmac:
+		e, err := g.encryptinternal(nil, sc, sc, fc, g.systemtitleC, g.stoc)
+		if err != nil {
+			return nil, err
+		}
+		if len(e) < GCM_TAG_LENGTH { // definitely shouldnt happen
+			return nil, fmt.Errorf("encrypted data too short")
+		}
+		return e[len(e)-GCM_TAG_LENGTH:], nil
+	case base.AuthenticationHighSha256:
+		hashbuf.Write(g.password)
+		hashbuf.Write(g.systemtitleC)
+		hashbuf.Write(g.systemtitleS)
+		hashbuf.Write(g.stoc)
+		hashbuf.Write(g.ctos)
+		h := sha256.Sum256(hashbuf.Bytes())
+		return h[:], nil
+	case base.AuthenticationHighEcdsa:
+		if g.clientPrivateKey == nil {
+			return nil, fmt.Errorf("ecdsa private key not set, this is required for ecdsa authentication")
+		}
+		hashbuf.Write(g.systemtitleC)
+		hashbuf.Write(g.systemtitleS)
+		hashbuf.Write(g.stoc)
+		hashbuf.Write(g.ctos)
+		var hashdata []byte
+		switch g.clientPrivateKey.Curve.Params().BitSize {
+		case 256:
+			h := sha256.Sum256(hashbuf.Bytes())
+			hashdata = h[:]
+		case 384:
+			h := sha512.Sum384(hashbuf.Bytes())
+			hashdata = h[:]
+		default:
+			return nil, fmt.Errorf("unsupported curve %v", g.clientPrivateKey.Curve.Params().BitSize)
+		}
+
+		bigr, bifs, err := ecdsa.Sign(rand.Reader, g.clientPrivateKey, hashdata)
+		if err != nil {
+			return nil, fmt.Errorf("unable to sign with ecdsa: %w", err)
+		}
+
+		hashbuf.Reset()
+		hashbuf.Write(bigr.Bytes())
+		hashbuf.Write(bifs.Bytes())
+		return hashbuf.Bytes(), nil
 	}
-	if len(e) < GCM_TAG_LENGTH { // definitely shouldnt happen
-		return nil, fmt.Errorf("encrypted data too short")
-	}
-	return e[len(e)-GCM_TAG_LENGTH:], nil
+
+	return nil, fmt.Errorf("unsupported authentication mechanism: %v", g.authenticationMechanismId)
 }
 
-func (g *gcm) Verify(sc byte, fc uint32, hash []byte) (bool, error) {
-	e, err := g.encryptinternal(nil, sc, sc, fc, g.systemtitleS, g.ctos)
-	if err != nil {
-		return false, err
+func (g *ciphering) Verify(sc byte, fc uint32, hash []byte) (bool, error) {
+	var hashbuf bytes.Buffer
+	switch g.authenticationMechanismId {
+	case base.AuthenticationLow:
+		return bytes.Equal(hash, g.password), nil
+	case base.AuthenticationHighMD5:
+		hashbuf.Write(g.ctos)
+		hashbuf.Write(g.password)
+		h := md5.Sum(hashbuf.Bytes())
+		return bytes.Equal(hash, h[:]), nil
+	case base.AuthenticationHighSHA1:
+		hashbuf.Write(g.ctos)
+		hashbuf.Write(g.password)
+		h := sha1.Sum(hashbuf.Bytes())
+		return bytes.Equal(hash, h[:]), nil
+	case base.AuthenticationHighGmac:
+		e, err := g.encryptinternal(nil, sc, sc, fc, g.systemtitleS, g.ctos)
+		if err != nil {
+			return false, err
+		}
+		if len(e) < GCM_TAG_LENGTH { // definitely shouldnt happen
+			return false, fmt.Errorf("encrypted data too short")
+		}
+		return bytes.Equal(e[len(e)-GCM_TAG_LENGTH:], hash), nil
+	case base.AuthenticationHighSha256:
+		hashbuf.Write(g.password)
+		hashbuf.Write(g.systemtitleS)
+		hashbuf.Write(g.systemtitleC)
+		hashbuf.Write(g.ctos)
+		hashbuf.Write(g.stoc)
+		h := sha256.Sum256(hashbuf.Bytes())
+		return bytes.Equal(hash, h[:]), nil
+	case base.AuthenticationHighEcdsa:
+		if g.serverCertificate == nil {
+			return false, fmt.Errorf("ecdsa server certificate not set, this is required for ecdsa authentication")
+		}
+		if len(hash) == 0 || len(hash)&1 != 0 {
+			return false, fmt.Errorf("invalid ecdsa authmech response length")
+		}
+
+		switch pubkey := g.serverCertificate.PublicKey.(type) {
+		case *ecdsa.PublicKey:
+			hashbuf.Write(g.systemtitleS)
+			hashbuf.Write(g.systemtitleC)
+			hashbuf.Write(g.ctos)
+			hashbuf.Write(g.stoc)
+
+			var hashdata []byte
+			switch pubkey.Curve.Params().BitSize {
+			case 256:
+				h := sha256.Sum256(hashbuf.Bytes())
+				hashdata = h[:]
+			case 384:
+				h := sha512.Sum384(hashbuf.Bytes())
+				hashdata = h[:]
+			default:
+				return false, fmt.Errorf("unsupported curve %v", pubkey.Curve.Params().BitSize)
+			}
+
+			var big_r, big_s big.Int
+			big_r.SetBytes(hash[:len(hash)/2])
+			big_s.SetBytes(hash[len(hash)/2:])
+			return ecdsa.Verify(pubkey, hashdata, &big_r, &big_s), nil
+		default:
+			return false, fmt.Errorf("invalid ecdsa server certificate")
+		}
 	}
-	if len(e) < GCM_TAG_LENGTH { // definitely shouldnt happen
-		return false, fmt.Errorf("encrypted data too short")
-	}
-	return bytes.Equal(e[len(e)-GCM_TAG_LENGTH:], hash), nil
+
+	return false, fmt.Errorf("unsupported authentication mechanism: %v", g.authenticationMechanismId)
 }
 
-func (g *gcm) Decrypt(ret []byte, sc byte, fc uint32, apdu []byte) ([]byte, error) {
+func (g *ciphering) Decrypt(ret []byte, sc byte, fc uint32, apdu []byte) ([]byte, error) {
 	return g.Decrypt2(ret, sc, sc, fc, apdu)
 }
 
-func (g *gcm) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error) {
+func (g *ciphering) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error) {
 	if apdu == nil {
 		return nil, fmt.Errorf("apdu is nil")
 	}
@@ -217,11 +413,11 @@ func (g *gcm) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, ap
 	return nil, fmt.Errorf("unsupported security control byte: %v", scControl)
 }
 
-func (g *gcm) GetDecryptorStream(sc byte, fc uint32, apdu io.Reader) (io.Reader, error) {
+func (g *ciphering) GetDecryptorStream(sc byte, fc uint32, apdu io.Reader) (io.Reader, error) {
 	return g.GetDecryptorStream2(sc, sc, fc, apdu)
 }
 
-func (g *gcm) GetDecryptorStream2(scControl byte, scContent byte, fc uint32, apdu io.Reader) (io.Reader, error) {
+func (g *ciphering) GetDecryptorStream2(scControl byte, scContent byte, fc uint32, apdu io.Reader) (io.Reader, error) {
 	if apdu == nil {
 		return nil, fmt.Errorf("apdu is nil")
 	}
@@ -247,15 +443,15 @@ func (g *gcm) GetDecryptorStream2(scControl byte, scContent byte, fc uint32, apd
 	return nil, fmt.Errorf("unsupported security control byte: %v", scControl)
 }
 
-func (g *gcm) Encrypt(ret []byte, sc byte, fc uint32, apdu []byte) ([]byte, error) {
+func (g *ciphering) Encrypt(ret []byte, sc byte, fc uint32, apdu []byte) ([]byte, error) {
 	return g.encryptinternal(ret, sc, sc, fc, g.systemtitleC, apdu)
 }
 
-func (g *gcm) Encrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error) {
+func (g *ciphering) Encrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error) {
 	return g.encryptinternal(ret, scControl, scContent, fc, g.systemtitleC, apdu)
 }
 
-func (g *gcm) encryptinternal(ret []byte, scControl byte, scContent byte, fc uint32, systemtitle []byte, apdu []byte) ([]byte, error) {
+func (g *ciphering) encryptinternal(ret []byte, scControl byte, scContent byte, fc uint32, systemtitle []byte, apdu []byte) ([]byte, error) {
 	if apdu == nil {
 		return nil, fmt.Errorf("apdu is nil")
 	}
@@ -316,7 +512,7 @@ func (g *gcm) encryptinternal(ret []byte, scControl byte, scContent byte, fc uin
 	return nil, fmt.Errorf("unsupported security control byte: %v", scControl)
 }
 
-func (g *gcm) GetEncryptLength(scControl byte, apdu []byte) (int, error) {
+func (g *ciphering) GetEncryptLength(scControl byte, apdu []byte) (int, error) {
 	switch scControl & 0xf0 {
 	case 0x10:
 		return len(apdu) + GCM_TAG_LENGTH, nil
@@ -329,7 +525,7 @@ func (g *gcm) GetEncryptLength(scControl byte, apdu []byte) (int, error) {
 }
 
 // x is not changed, dst is changed, needs 2nd tmp slot
-func (g *gcm) ghash(x []byte, dst []byte) {
+func (g *ciphering) ghash(x []byte, dst []byte) {
 	tmp := g.tmp[AES_BLOCK_SIZE<<1 : AES_BLOCK_SIZE*3]
 	m := len(x) >> AES_BLOCK_SIZE_ROT
 	for range m {
@@ -348,7 +544,7 @@ func (g *gcm) ghash(x []byte, dst []byte) {
 }
 
 // x is not changed, dst is changed, this is really black magic...
-func (g *gcm) gf_mult(x []byte, dst []byte) {
+func (g *ciphering) gf_mult(x []byte, dst []byte) {
 	lo := x[15] & 0x0f
 	hi := x[15] >> 4
 
@@ -409,13 +605,13 @@ func os_memzero(dst []byte) {
 }
 
 // icb is not changed, x is not changed, dst is changed
-func (g *gcm) aes_gctr(icb []byte, x []byte, dst []byte) {
+func (g *ciphering) aes_gctr(icb []byte, x []byte, dst []byte) {
 	g.aes.Encrypt(dst, icb)
 	xor_block(dst, x)
 }
 
 // J0 is changed, S is changed, plain and crypt are changed according to encrypt, aad is not changed, needs 2,3 tmp slot
-func (g *gcm) aes_gcm_gctr_ghash(J0 []byte, S []byte, plain []byte, crypt []byte, aad []byte, encrypt bool) {
+func (g *ciphering) aes_gcm_gctr_ghash(J0 []byte, S []byte, plain []byte, crypt []byte, aad []byte, encrypt bool) {
 	os_memzero(S)
 	g.ghash(aad, S)
 	if len(plain) != 0 { // fortunately in case of reading whole aad from plain for hash, then this condition is always false as plain is already read
@@ -434,7 +630,7 @@ func (g *gcm) aes_gcm_gctr_ghash(J0 []byte, S []byte, plain []byte, crypt []byte
 }
 
 // J0 content is incremented, x is not changed, dst is changed, dsts is changed, needs 2nd tmp slot
-func (g *gcm) aes_gctr_ghash(J0 []byte, x []byte, dst []byte, dsthash []byte) {
+func (g *ciphering) aes_gctr_ghash(J0 []byte, x []byte, dst []byte, dsthash []byte) {
 	tmp := g.tmp[AES_BLOCK_SIZE<<1 : AES_BLOCK_SIZE*3]
 	n := len(x) >> AES_BLOCK_SIZE_ROT
 	for range n { // this part should be streamed
@@ -461,7 +657,7 @@ func (g *gcm) aes_gctr_ghash(J0 []byte, x []byte, dst []byte, dsthash []byte) {
 }
 
 // J0 content is incremented, x is not changed, dst is changed, dsts is changed, needs 2nd tmp slot
-func (g *gcm) aes_gctr_ghash_de(J0 []byte, x []byte, dst []byte, dsthash []byte) {
+func (g *ciphering) aes_gctr_ghash_de(J0 []byte, x []byte, dst []byte, dsthash []byte) {
 	tmp := g.tmp[AES_BLOCK_SIZE<<1 : AES_BLOCK_SIZE*3]
 	n := len(x) >> AES_BLOCK_SIZE_ROT
 	for range n { // this part should be streamed
@@ -488,7 +684,7 @@ func (g *gcm) aes_gctr_ghash_de(J0 []byte, x []byte, dst []byte, dsthash []byte)
 }
 
 // crypt is output, needs 0,1,2,3 tmp slots
-func (g *gcm) aes_gcm_ae(plain []byte, aad []byte, crypt []byte, tag []byte) {
+func (g *ciphering) aes_gcm_ae(plain []byte, aad []byte, crypt []byte, tag []byte) {
 	J0 := g.tmp[:AES_BLOCK_SIZE] // hardcore, initialized at the start
 	S := g.tmp[AES_BLOCK_SIZE : AES_BLOCK_SIZE<<1]
 
@@ -503,7 +699,7 @@ func (g *gcm) aes_gcm_ae(plain []byte, aad []byte, crypt []byte, tag []byte) {
 }
 
 // plain is output, needs 0,1,2,3 tmp slots
-func (g *gcm) aes_gcm_ad(crypt []byte, aad []byte, plain []byte, tag []byte) error {
+func (g *ciphering) aes_gcm_ad(crypt []byte, aad []byte, plain []byte, tag []byte) error {
 	J0 := g.tmp[:AES_BLOCK_SIZE] // hardcore, initialized at the start
 	S := g.tmp[AES_BLOCK_SIZE : AES_BLOCK_SIZE<<1]
 
