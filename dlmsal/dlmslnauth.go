@@ -46,9 +46,9 @@ func (d *dlmsal) LNAuthentication(checkresp bool) (err error) {
 		}
 
 		hashdata2 := make([]byte, 5+len(hashdata))
-		hashdata[0] = byte(base.SecurityAuthentication)
-		binary.BigEndian.PutUint32(hashdata[1:], s.framecounter)
-		copy(hashdata[5:], hashdata)
+		hashdata2[0] = byte(base.SecurityAuthentication)
+		binary.BigEndian.PutUint32(hashdata2[1:], s.framecounter)
+		copy(hashdata2[5:], hashdata)
 		s.framecounter++ // a bit questionable here
 		hashdata = hashdata2
 	default:
