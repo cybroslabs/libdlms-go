@@ -2,8 +2,6 @@ package dlmsal
 
 import (
 	"bytes"
-	"crypto/ecdsa"
-	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -204,7 +202,7 @@ func NewSettingsNoAuthenticationLN() (*DlmsSettings, error) {
 	}, nil
 }
 
-func NewSettingsWithGmacLN(systemtitle []byte, g ciphering.Ciphering, ctoshash []byte, fc uint32) (*DlmsSettings, error) {
+func NewSettingsWithCipheringLN(systemtitle []byte, g ciphering.Ciphering, ctoshash []byte, fc uint32, authmech base.Authentication) (*DlmsSettings, error) {
 	if len(systemtitle) != 8 {
 		return nil, fmt.Errorf("systemtitle has to be 8 bytes long")
 	}
@@ -212,7 +210,7 @@ func NewSettingsWithGmacLN(systemtitle []byte, g ciphering.Ciphering, ctoshash [
 		return nil, fmt.Errorf("ctoshash is empty")
 	}
 	ret := DlmsSettings{
-		AuthenticationMechanismId: base.AuthenticationHighGmac,
+		AuthenticationMechanismId: authmech,
 		ApplicationContext:        base.ApplicationContextLNCiphering,
 		HighPriority:              true,
 		ConfirmedRequests:         true,
@@ -226,40 +224,6 @@ func NewSettingsWithGmacLN(systemtitle []byte, g ciphering.Ciphering, ctoshash [
 		framecounter:      fc,
 		Security:          base.SecurityEncryption | base.SecurityAuthentication,
 	}
-	ret.ctos = ret.password // just reference
-	return &ret, nil
-}
-
-func NewSettingsWithEcdsaLN(systemtitle []byte, g ciphering.Ciphering, ctoshash []byte, fc uint32, serverCertificate *x509.Certificate) (*DlmsSettings, error) {
-	if len(systemtitle) != 8 {
-		return nil, fmt.Errorf("systemtitle has to be 8 bytes long")
-	}
-	if len(ctoshash) < 32 {
-		return nil, fmt.Errorf("ctoshash is too short, it has to be at least 32 bytes long")
-	}
-	if serverCertificate == nil {
-		return nil, fmt.Errorf("server certificate is nil")
-	}
-	if _, ok := serverCertificate.PublicKey.(*ecdsa.PublicKey); !ok {
-		return nil, fmt.Errorf("server certificate doesnt have ecdsa public key")
-	}
-
-	ret := DlmsSettings{
-		AuthenticationMechanismId: base.AuthenticationHighEcdsa,
-		ApplicationContext:        base.ApplicationContextLNCiphering,
-		HighPriority:              true,
-		ConfirmedRequests:         true,
-		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
-			base.ConformanceBlockBlockTransferWithAction | base.ConformanceBlockAction | base.ConformanceBlockGet | base.ConformanceBlockSet |
-			base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences | base.ConformanceBlockAttribute0SupportedWithGet |
-			base.ConformanceBlockGeneralProtection,
-		clientsystemtitle: newcopy(systemtitle),
-		cipher:            g,
-		password:          newcopy(ctoshash),
-		framecounter:      fc,
-		Security:          base.SecurityEncryption | base.SecurityAuthentication | base.SecuritySuite2,
-	}
-
 	ret.ctos = ret.password // just reference
 	return &ret, nil
 }
