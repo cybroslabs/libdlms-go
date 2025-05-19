@@ -61,6 +61,16 @@ type CipheringSettings struct {
 	ServerCertificate         *x509.Certificate // could be returned during AARE
 }
 
+func GenerateCtoS(length int) (ret []byte) {
+	chars := "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ!?" // has to have 64, most uniform distribution
+	ret = make([]byte, length)
+	_, _ = rand.Read(ret)
+	for ii := range ret {
+		ret[ii] = chars[int(ret[ii])&0x3f]
+	}
+	return
+}
+
 func (s *CipheringSettings) Validate() error {
 	if s.EncryptionKey != nil {
 		switch len(s.EncryptionKey) {
