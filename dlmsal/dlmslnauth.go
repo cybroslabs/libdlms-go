@@ -39,14 +39,15 @@ func (d *dlmsal) LNAuthentication(checkresp bool) (err error) {
 			return fmt.Errorf("cipher not set, this is required for gmac authentication")
 		}
 
+		sc := base.SecurityAuthentication | (s.Security & base.SecuritySuiteMask)
 		// create ctos hash
-		hashdata, err = s.cipher.Hash(byte(base.SecurityAuthentication), s.framecounter)
+		hashdata, err = s.cipher.Hash(byte(sc), s.framecounter)
 		if err != nil {
 			return
 		}
 
 		hashdata2 := make([]byte, 5+len(hashdata))
-		hashdata2[0] = byte(base.SecurityAuthentication)
+		hashdata2[0] = byte(sc)
 		binary.BigEndian.PutUint32(hashdata2[1:], s.framecounter)
 		copy(hashdata2[5:], hashdata)
 		s.framecounter++ // a bit questionable here
@@ -90,7 +91,7 @@ func (d *dlmsal) LNAuthentication(checkresp bool) (err error) {
 		result, err = s.cipher.Verify(byte(base.SecurityAuthentication), s.framecounter, aresp)
 	case base.AuthenticationHighGmac:
 		// ok, check response against my own hash
-		if len(aresp) != 5+ciphering.GCM_TAG_LENGTH || aresp[0] != byte(base.SecurityAuthentication) {
+		if len(aresp) != 5+ciphering.GCM_TAG_LENGTH || aresp[0]&^byte(base.SecuritySuiteMask) != byte(base.SecurityAuthentication) {
 			return fmt.Errorf("invalid stoc hash response")
 		}
 		result, err = s.cipher.Verify(aresp[0], binary.BigEndian.Uint32(aresp[1:]), aresp[5:])

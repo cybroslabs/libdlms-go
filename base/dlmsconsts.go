@@ -29,6 +29,7 @@ const (
 	SecuritySuite0         DlmsSecurity = 0
 	SecuritySuite1         DlmsSecurity = 1
 	SecuritySuite2         DlmsSecurity = 2
+	SecuritySuiteMask      DlmsSecurity = 0x0F
 )
 
 type AssociationResult byte
