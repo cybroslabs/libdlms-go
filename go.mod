@@ -6,7 +6,7 @@ toolchain go1.24.2
 
 require (
 	go.uber.org/zap v1.27.0
-	google.golang.org/grpc v1.72.0
+	google.golang.org/grpc v1.72.1
 )
 
 require (
