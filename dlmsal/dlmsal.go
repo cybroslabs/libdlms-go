@@ -398,6 +398,15 @@ func (d *dlmsal) Open() error { // login and shits
 		}
 	}
 
+	if d.settings.AssociationResult != base.AssociationResultAccepted {
+		return fmt.Errorf("login failed: %v", d.settings.AssociationResult)
+	}
+	switch d.settings.SourceDiagnostic {
+	case base.SourceDiagnosticNone:
+	case base.SourceDiagnosticAuthenticationRequired:
+	default:
+		return fmt.Errorf("invalid source diagnostic: %v", d.settings.SourceDiagnostic)
+	}
 	if uitag == nil {
 		return fmt.Errorf("no user information tag found")
 	}
@@ -429,15 +438,6 @@ func (d *dlmsal) Open() error { // login and shits
 	}
 	if d.aareres.applicationContextName != d.settings.ApplicationContext {
 		return fmt.Errorf("application contextes differ: %v != %v", d.aareres.applicationContextName, d.settings.ApplicationContext)
-	}
-	if d.settings.AssociationResult != base.AssociationResultAccepted {
-		return fmt.Errorf("login failed: %v", d.settings.AssociationResult)
-	}
-	switch d.settings.SourceDiagnostic {
-	case base.SourceDiagnosticNone:
-	case base.SourceDiagnosticAuthenticationRequired:
-	default:
-		return fmt.Errorf("invalid source diagnostic: %v", d.settings.SourceDiagnostic)
 	}
 	// store aare maybe into context, max pdu info and so on
 	if d.aareres.initiateResponse == nil {
