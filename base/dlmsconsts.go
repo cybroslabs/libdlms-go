@@ -110,35 +110,35 @@ const (
 
 // Conformance block
 const (
-	ConformanceBlockReservedZero         = 0b100000000000000000000000
-	ConformanceBlockGeneralProtection    = 0b010000000000000000000000
-	ConformanceBlockGeneralBlockTransfer = 0b001000000000000000000000
-	ConformanceBlockRead                 = 0b000100000000000000000000
+	ConformanceBlockReservedZero         uint32 = 0b100000000000000000000000
+	ConformanceBlockGeneralProtection    uint32 = 0b010000000000000000000000
+	ConformanceBlockGeneralBlockTransfer uint32 = 0b001000000000000000000000
+	ConformanceBlockRead                 uint32 = 0b000100000000000000000000
 
-	ConformanceBlockWrite            = 0b000010000000000000000000
-	ConformanceBlockUnconfirmedWrite = 0b000001000000000000000000
-	ConformanceBlockReservedSix      = 0b000000100000000000000000
-	ConformanceBlockReservedSeven    = 0b000000010000000000000000
+	ConformanceBlockWrite            uint32 = 0b000010000000000000000000
+	ConformanceBlockUnconfirmedWrite uint32 = 0b000001000000000000000000
+	ConformanceBlockReservedSix      uint32 = 0b000000100000000000000000
+	ConformanceBlockReservedSeven    uint32 = 0b000000010000000000000000
 
-	ConformanceBlockAttribute0SupportedWithSet = 0b000000001000000000000000
-	ConformanceBlockPriorityMgmtSupported      = 0b000000000100000000000000
-	ConformanceBlockAttribute0SupportedWithGet = 0b000000000010000000000000
-	ConformanceBlockBlockTransferWithGetOrRead = 0b000000000001000000000000
+	ConformanceBlockAttribute0SupportedWithSet uint32 = 0b000000001000000000000000
+	ConformanceBlockPriorityMgmtSupported      uint32 = 0b000000000100000000000000
+	ConformanceBlockAttribute0SupportedWithGet uint32 = 0b000000000010000000000000
+	ConformanceBlockBlockTransferWithGetOrRead uint32 = 0b000000000001000000000000
 
-	ConformanceBlockBlockTransferWithSetOrWrite = 0b000000000000100000000000
-	ConformanceBlockBlockTransferWithAction     = 0b000000000000010000000000
-	ConformanceBlockMultipleReferences          = 0b000000000000001000000000
-	ConformanceBlockInformationReport           = 0b000000000000000100000000
+	ConformanceBlockBlockTransferWithSetOrWrite uint32 = 0b000000000000100000000000
+	ConformanceBlockBlockTransferWithAction     uint32 = 0b000000000000010000000000
+	ConformanceBlockMultipleReferences          uint32 = 0b000000000000001000000000
+	ConformanceBlockInformationReport           uint32 = 0b000000000000000100000000
 
-	ConformanceBlockDataNotification   = 0b000000000000000010000000
-	ConformanceBlockAccess             = 0b000000000000000001000000
-	ConformanceBlockParametrizedAccess = 0b000000000000000000100000
-	ConformanceBlockGet                = 0b000000000000000000010000
+	ConformanceBlockDataNotification   uint32 = 0b000000000000000010000000
+	ConformanceBlockAccess             uint32 = 0b000000000000000001000000
+	ConformanceBlockParametrizedAccess uint32 = 0b000000000000000000100000
+	ConformanceBlockGet                uint32 = 0b000000000000000000010000
 
-	ConformanceBlockSet               = 0b000000000000000000001000
-	ConformanceBlockSelectiveAccess   = 0b000000000000000000000100
-	ConformanceBlockEventNotification = 0b000000000000000000000010
-	ConformanceBlockAction            = 0b000000000000000000000001
+	ConformanceBlockSet               uint32 = 0b000000000000000000001000
+	ConformanceBlockSelectiveAccess   uint32 = 0b000000000000000000000100
+	ConformanceBlockEventNotification uint32 = 0b000000000000000000000010
+	ConformanceBlockAction            uint32 = 0b000000000000000000000001
 )
 
 type CosemTag byte
