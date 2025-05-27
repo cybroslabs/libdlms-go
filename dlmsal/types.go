@@ -118,6 +118,12 @@ type DlmsDateTime struct {
 	Status    byte
 }
 
+func (t *DlmsDateTime) String() string {
+	return fmt.Sprintf("%04d-%02d-%02d %02d:%02d:%02d.%02d UTC%+03d Status: %02x",
+		t.Date.Year, t.Date.Month, t.Date.Day,
+		t.Time.Hour, t.Time.Minute, t.Time.Second, t.Time.Hundredths, t.Deviation, t.Status)
+}
+
 func (t *DlmsDateTime) ToTime() (tt time.Time, err error) {
 	if t.Date.Year == 0xffff || t.Date.Month == 0xff || t.Date.Day == 0xff || t.Time.Hour == 0xff || t.Time.Minute == 0xff {
 		return tt, fmt.Errorf("invalid date or time")
