@@ -40,6 +40,19 @@ const (
 	AssociationResultTransientRejected AssociationResult = 2
 )
 
+func (a AssociationResult) String() string {
+	switch a {
+	case AssociationResultAccepted:
+		return "accepted"
+	case AssociationResultPermanentRejected:
+		return "permanent-rejected"
+	case AssociationResultTransientRejected:
+		return "transient-rejected"
+	default:
+		return "unknown"
+	}
+}
+
 type SourceDiagnostic byte
 
 const (
@@ -59,6 +72,43 @@ const (
 	SourceDiagnosticAuthenticationFailure                      SourceDiagnostic = 13
 	SourceDiagnosticAuthenticationRequired                     SourceDiagnostic = 14
 )
+
+func (s SourceDiagnostic) String() string {
+	switch s {
+	case SourceDiagnosticNone:
+		return "none"
+	case SourceDiagnosticNoReasonGiven:
+		return "no-reason-given"
+	case SourceDiagnosticApplicationContextNameNotSupported:
+		return "application-context-name-not-supported"
+	case SourceDiagnosticCallingAPTitleNotRecognized:
+		return "calling-ap-title-not-recognized"
+	case SourceDiagnosticCallingAPInvocationIdentifierNotRecognized:
+		return "calling-ap-invocation-identifier-not-recognized"
+	case SourceDiagnosticCallingAEQualifierNotRecognized:
+		return "calling-ae-qualifier-not-recognized"
+	case SourceDiagnosticCallingAEInvocationIdentifierNotRecognized:
+		return "calling-ae-invocation-identifier-not-recognized"
+	case SourceDiagnosticCalledAPTitleNotRecognized:
+		return "called-ap-title-not-recognized"
+	case SourceDiagnosticCalledAPInvocationIdentifierNotRecognized:
+		return "called-ap-invocation-identifier-not-recognized"
+	case SourceDiagnosticCalledAEQualifierNotRecognized:
+		return "called-ae-qualifier-not-recognized"
+	case SourceDiagnosticCalledAEInvocationIdentifierNotRecognized:
+		return "called-ae-invocation-identifier-not-recognized"
+	case SourceDiagnosticAuthenticationMechanismNameNotRecognized:
+		return "authentication-mechanism-name-not-recognized"
+	case SourceDiagnosticAuthenticationMechanismNameRequired:
+		return "authentication-mechanism-name-required"
+	case SourceDiagnosticAuthenticationFailure:
+		return "authentication-failure"
+	case SourceDiagnosticAuthenticationRequired:
+		return "authentication-required"
+	default:
+		return "unknown"
+	}
+}
 
 type ApplicationContext byte
 

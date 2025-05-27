@@ -399,13 +399,13 @@ func (d *dlmsal) Open() error { // login and shits
 	}
 
 	if d.settings.AssociationResult != base.AssociationResultAccepted {
-		return fmt.Errorf("login failed: %v", d.settings.AssociationResult)
+		return fmt.Errorf("login failed: %s", d.settings.AssociationResult)
 	}
 	switch d.settings.SourceDiagnostic {
 	case base.SourceDiagnosticNone:
 	case base.SourceDiagnosticAuthenticationRequired:
 	default:
-		return fmt.Errorf("invalid source diagnostic: %v", d.settings.SourceDiagnostic)
+		return fmt.Errorf("invalid source diagnostic: %s", d.settings.SourceDiagnostic)
 	}
 	if uitag == nil {
 		return fmt.Errorf("no user information tag found")
