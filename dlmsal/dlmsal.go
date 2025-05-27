@@ -140,6 +140,7 @@ type DlmsSettings struct { // damn too many settings
 	UserId                          *byte
 	ServerAuthenticationMechanismId base.Authentication
 	UseGeneralGloDedCiphering       bool
+	ReturnedConformanceBlock        uint32 // this is returned conformance block, not the one we sent
 
 	// private part
 	ctos              []byte
@@ -150,6 +151,7 @@ type DlmsSettings struct { // damn too many settings
 	framecounter      uint32
 	dedcipher         ciphering.Ciphering
 	dedicatedkey      []byte
+	computedconf      uint32
 }
 
 func (d *DlmsSettings) SetDedicatedKey(key []byte, g ciphering.Ciphering) {
@@ -370,9 +372,9 @@ func (d *dlmsal) Open() error { // login and shits
 		case base.BERTypeContext | base.BERTypeConstructed | base.PduTypeApplicationContextName: // 0xa1
 			d.aareres.applicationContextName, err = parseApplicationContextName(dt)
 		case base.BERTypeContext | base.BERTypeConstructed | base.PduTypeCalledAPTitle: // 0xa2
-			d.aareres.associationResult, err = parseAssociationResult(dt)
+			d.settings.AssociationResult, err = parseAssociationResult(dt)
 		case base.BERTypeContext | base.BERTypeConstructed | base.PduTypeCalledAEQualifier: // 0xa3
-			d.aareres.sourceDiagnostic, err = parseAssociateSourceDiagnostic(dt)
+			d.settings.SourceDiagnostic, err = parseAssociateSourceDiagnostic(dt)
 		case base.BERTypeContext | base.BERTypeConstructed | base.PduTypeCalledAPInvocationID: // 0xa4
 			d.settings.ServerSystemTitle, err = parseAPTitle(dt, &d.tmpbuffer)
 			mask |= 1
@@ -428,25 +430,23 @@ func (d *dlmsal) Open() error { // login and shits
 	if d.aareres.applicationContextName != d.settings.ApplicationContext {
 		return fmt.Errorf("application contextes differ: %v != %v", d.aareres.applicationContextName, d.settings.ApplicationContext)
 	}
-	if d.aareres.associationResult != base.AssociationResultAccepted {
-		return fmt.Errorf("login failed: %v", d.aareres.associationResult)
+	if d.settings.AssociationResult != base.AssociationResultAccepted {
+		return fmt.Errorf("login failed: %v", d.settings.AssociationResult)
 	}
-	d.settings.SourceDiagnostic = d.aareres.sourceDiagnostic // duplicit information, damn it, maybe make a bit bigger settings, or maybe status?
-	d.settings.AssociationResult = d.aareres.associationResult
-	switch d.aareres.sourceDiagnostic {
+	switch d.settings.SourceDiagnostic {
 	case base.SourceDiagnosticNone:
 	case base.SourceDiagnosticAuthenticationRequired:
 	default:
-		return fmt.Errorf("invalid source diagnostic: %v", d.aareres.sourceDiagnostic)
+		return fmt.Errorf("invalid source diagnostic: %v", d.settings.SourceDiagnostic)
 	}
 	// store aare maybe into context, max pdu info and so on
 	if d.aareres.initiateResponse == nil {
 		return fmt.Errorf("no initiate response, error probably")
 	}
-	d.maxPduSendSize = int(d.aareres.initiateResponse.ServerMaxReceivePduSize)
-	d.logf("Max PDU size: %v, Vaa: %v", d.maxPduSendSize, d.aareres.initiateResponse.VAAddress)
+	d.maxPduSendSize = int(d.aareres.initiateResponse.serverMaxReceivePduSize)
+	d.logf("Max PDU size: %v, Vaa: %v", d.maxPduSendSize, d.aareres.initiateResponse.vAAddress)
 
-	d.settings.VAAddress = d.aareres.initiateResponse.VAAddress // returning from interface, a bit hacky yes
+	d.settings.VAAddress = d.aareres.initiateResponse.vAAddress // returning from interface, a bit hacky yes
 
 	d.transport.isopen = true
 	return nil

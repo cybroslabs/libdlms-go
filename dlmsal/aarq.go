@@ -9,10 +9,9 @@ import (
 )
 
 type initiateResponse struct {
-	NegotiatedQualityOfService byte
-	NegotiatedConformance      uint32
-	ServerMaxReceivePduSize    uint16
-	VAAddress                  int16
+	negotiatedQualityOfService byte
+	serverMaxReceivePduSize    uint16
+	vAAddress                  int16
 }
 
 type confirmedServiceErrorTag byte
@@ -51,8 +50,6 @@ type aaretag struct {
 
 type aaResponse struct {
 	applicationContextName base.ApplicationContext
-	associationResult      base.AssociationResult
-	sourceDiagnostic       base.SourceDiagnostic
 	initiateResponse       *initiateResponse
 	confirmedServiceError  *confirmedServiceError
 }
@@ -301,7 +298,7 @@ func (al *dlmsal) parseUserInformation(tag aaretag) (ir *initiateResponse, cse *
 func (al *dlmsal) parseUserInformationtag(d []byte) (ir *initiateResponse, cse *confirmedServiceError, err error) {
 	switch base.CosemTag(d[0]) {
 	case base.TagInitiateResponse:
-		iir, err := decodeInitiateResponse(d[1:])
+		iir, err := al.decodeInitiateResponse(d[1:])
 		return &iir, nil, err
 	case base.TagConfirmedServiceError:
 		cse, err := decodeConfirmedServiceError(d[1:])
@@ -320,7 +317,7 @@ func (al *dlmsal) parseUserInformationtag(d []byte) (ir *initiateResponse, cse *
 	return
 }
 
-func decodeInitiateResponse(src []byte) (out initiateResponse, err error) {
+func (al *dlmsal) decodeInitiateResponse(src []byte) (out initiateResponse, err error) {
 	if len(src) < 13 {
 		if len(src) == 12 && cap(src) > 12 { // some units can return this shit, underlying array should be big enough to accomodate additional byte
 			src = src[:13] // this hack wont work if 0xbe tag is not the last one, ok, usually is the last one
@@ -331,7 +328,7 @@ func decodeInitiateResponse(src []byte) (out initiateResponse, err error) {
 	}
 
 	if src[0] == 0x01 {
-		out.NegotiatedQualityOfService = src[1]
+		out.negotiatedQualityOfService = src[1]
 		src = src[2:]
 	} else {
 		src = src[1:]
@@ -347,9 +344,10 @@ func decodeInitiateResponse(src []byte) (out initiateResponse, err error) {
 		return
 	}
 
-	out.NegotiatedConformance = binary.BigEndian.Uint32(src[4:8])
-	out.ServerMaxReceivePduSize = binary.BigEndian.Uint16(src[8:10])
-	out.VAAddress = int16(binary.BigEndian.Uint16(src[10:12]))
+	al.settings.ReturnedConformanceBlock = binary.BigEndian.Uint32(src[4:8])
+	al.settings.computedconf = al.settings.ConformanceBlock & al.settings.ReturnedConformanceBlock
+	out.serverMaxReceivePduSize = binary.BigEndian.Uint16(src[8:10])
+	out.vAAddress = int16(binary.BigEndian.Uint16(src[10:12]))
 	return
 }
 

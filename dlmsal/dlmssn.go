@@ -13,8 +13,24 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 		return nil, base.ErrNotOpened
 	}
 
-	if len(items) == 0 {
+	switch len(items) {
+	case 0:
 		return nil, base.ErrNothingToRead
+	case 1:
+	default:
+		if d.settings.computedconf&base.ConformanceBlockMultipleReferences == 0 { // one by one
+			var tmp [1]DlmsSNRequestItem
+			ret := make([]DlmsData, 0, len(items))
+			for _, item := range items {
+				tmp[0] = item
+				data, err := d.Read(tmp[:])
+				if err != nil {
+					return nil, err
+				}
+				ret = append(ret, data[0])
+			}
+			return ret, nil
+		}
 	}
 
 	local := &d.pdu
@@ -149,8 +165,24 @@ func (d *dlmsal) Write(items []DlmsSNRequestItem) ([]base.DlmsResultTag, error) 
 		return nil, base.ErrNotOpened
 	}
 
-	if len(items) == 0 {
+	switch len(items) {
+	case 0:
 		return nil, base.ErrNothingToRead
+	case 1:
+	default:
+		if d.settings.computedconf&base.ConformanceBlockMultipleReferences == 0 { // one by one
+			var tmp [1]DlmsSNRequestItem
+			ret := make([]base.DlmsResultTag, 0, len(items))
+			for _, item := range items {
+				tmp[0] = item
+				data, err := d.Write(tmp[:])
+				if err != nil {
+					return nil, err
+				}
+				ret = append(ret, data[0])
+			}
+			return ret, nil
+		}
 	}
 
 	local := &d.pdu

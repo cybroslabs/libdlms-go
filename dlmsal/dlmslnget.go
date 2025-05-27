@@ -53,9 +53,6 @@ func encodelngetitem(dst *bytes.Buffer, item *DlmsLNRequestItem) error {
 }
 
 func (ln *dlmsalget) get(items []DlmsLNRequestItem) ([]DlmsData, error) {
-	if len(items) == 0 {
-		return nil, base.ErrNothingToRead
-	}
 	master := ln.master
 	local := &master.pdu
 	local.Reset()
@@ -404,6 +401,24 @@ func (d *dlmsal) Get(items []DlmsLNRequestItem) ([]DlmsData, error) {
 		return nil, base.ErrNotOpened
 	}
 
+	if len(items) == 0 {
+		return nil, base.ErrNothingToRead
+	}
+
+	if d.settings.computedconf&base.ConformanceBlockMultipleReferences == 0 { // ok, one by one
+		var tmp [1]DlmsLNRequestItem
+		ret := make([]DlmsData, 0, len(items))
+		for _, i := range items {
+			tmp[0] = i
+			ln := &dlmsalget{master: d, state: 0, blockexp: 0}
+			rget, err := ln.get(tmp[:])
+			if err != nil {
+				return nil, err
+			}
+			ret = append(ret, rget[0])
+		}
+		return ret, nil
+	}
 	ln := &dlmsalget{master: d, state: 0, blockexp: 0}
 	return ln.get(items)
 }

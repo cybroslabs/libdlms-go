@@ -182,6 +182,18 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 		return al.setsingle(items[0])
 	}
 
+	if al.settings.computedconf&base.ConformanceBlockMultipleReferences == 0 { // one by one
+		ret = make([]base.DlmsResultTag, 0, len(items))
+		for _, i := range items {
+			r, err := al.setsingle(i)
+			if err != nil {
+				return nil, err
+			}
+			ret = append(ret, r[0])
+		}
+		return ret, nil
+	}
+
 	// ok, so fun with list damn it
 	local := &al.pdu
 	local.Reset()

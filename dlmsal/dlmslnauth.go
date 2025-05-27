@@ -11,8 +11,8 @@ import (
 func (d *dlmsal) LNAuthentication(checkresp bool) (err error) {
 	s := d.settings
 
-	if d.aareres.associationResult != base.AssociationResultAccepted { // sadly this zero is also default value
-		return fmt.Errorf("association result not accepted: %v", d.aareres.associationResult)
+	if s.AssociationResult != base.AssociationResultAccepted { // sadly this zero is also default value
+		return fmt.Errorf("association result not accepted: %v", s.AssociationResult)
 	}
 
 	switch s.SourceDiagnostic {
