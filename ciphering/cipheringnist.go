@@ -194,11 +194,19 @@ func (g *cipheringnist) Verify(sc byte, fc uint32, hash []byte) (bool, error) {
 
 // Decrypt2 implements Gcm.
 func (g *cipheringnist) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error) {
-	if scControl&0x80 != 0 {
-		return nil, fmt.Errorf("compression not yet supported")
+	if apdu == nil {
+		return nil, fmt.Errorf("apdu is nil")
 	}
-	if scControl&0x40 != 0 {
-		return nil, fmt.Errorf("only unicast keys are supported")
+	switch g.authenticationMechanismId {
+	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa:
+	default:
+		if ret != nil && cap(ret) >= len(apdu) {
+			ret = ret[:len(apdu)]
+		} else {
+			ret = make([]byte, len(apdu))
+		}
+		copy(ret, apdu) // in that case, yes, wasteful copy, but it should be copied as we dont know if apdu wont be reused
+		return ret, nil
 	}
 
 	copy(g.iv[:], g.systemtitleS)
@@ -237,11 +245,19 @@ func (g *cipheringnist) Encrypt2(ret []byte, scControl byte, scContent byte, fc 
 }
 
 func (g *cipheringnist) encryptinternal(ret []byte, scControl byte, scContent byte, fc uint32, title []byte, apdu []byte) ([]byte, error) { // check systitle equality, but it really hurts sending it every packet
-	if scControl&0x80 != 0 {
-		return nil, fmt.Errorf("compression not yet supported")
+	if apdu == nil {
+		return nil, fmt.Errorf("apdu is nil")
 	}
-	if scControl&0x40 != 0 {
-		return nil, fmt.Errorf("only unicast keys are supported")
+	switch g.authenticationMechanismId {
+	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa:
+	default:
+		if ret != nil && cap(ret) >= len(apdu) {
+			ret = ret[:len(apdu)]
+		} else {
+			ret = make([]byte, len(apdu))
+		}
+		copy(ret, apdu)
+		return ret, nil
 	}
 
 	copy(g.iv[:], title)
@@ -273,6 +289,15 @@ func (g *cipheringnist) GetDecryptorStream(sc byte, fc uint32, apdu io.Reader) (
 
 // GetDecryptorStream2 implements Gcm.
 func (g *cipheringnist) GetDecryptorStream2(scControl byte, scContent byte, fc uint32, apdu io.Reader) (io.Reader, error) {
+	if apdu == nil {
+		return nil, fmt.Errorf("apdu is nil")
+	}
+	switch g.authenticationMechanismId {
+	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa:
+	default:
+		return apdu, nil
+	}
+
 	data, err := io.ReadAll(apdu) // not streamed at all in this case
 	if err != nil {
 		return nil, err
@@ -288,6 +313,12 @@ func (g *cipheringnist) GetDecryptorStream2(scControl byte, scContent byte, fc u
 
 // GetEncryptLength implements Gcm.
 func (g *cipheringnist) GetEncryptLength(scControl byte, apdu []byte) (int, error) {
+	switch g.authenticationMechanismId {
+	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa:
+	default:
+		return len(apdu), nil
+	}
+
 	switch scControl & 0x30 {
 	case 0x10, 0x30:
 		return len(apdu) + GCM_TAG_LENGTH, nil
@@ -302,18 +333,7 @@ func NewCipheringNist(settings *CipheringSettings) (Ciphering, error) { // so on
 		return nil, err
 	}
 
-	cr, err := aes.NewCipher(settings.EncryptionKey)
-	if err != nil {
-		return nil, err
-	}
-	enc, err := cipher.NewGCMWithTagSize(cr, GCM_TAG_LENGTH)
-	if err != nil {
-		return nil, err
-	}
-
 	ret := &cipheringnist{
-		nist:                      enc,
-		aad:                       make([]byte, 1+len(settings.AuthenticationKey)),
 		authenticationMechanismId: settings.AuthenticationMechanismId,
 		clientPrivateKey:          settings.ClientPrivateKey,
 		serverCertificate:         settings.ServerCertificate,
@@ -321,6 +341,21 @@ func NewCipheringNist(settings *CipheringSettings) (Ciphering, error) { // so on
 		ctos:                      slices.Clone(settings.CtoS),
 		password:                  slices.Clone(settings.Password),
 	}
-	copy(ret.aad[1:], settings.AuthenticationKey)
+
+	switch ret.authenticationMechanismId {
+	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa:
+		ret.aad = make([]byte, 1+len(settings.AuthenticationKey))
+		cr, err := aes.NewCipher(settings.EncryptionKey)
+		if err != nil {
+			return nil, err
+		}
+		enc, err := cipher.NewGCMWithTagSize(cr, GCM_TAG_LENGTH)
+		if err != nil {
+			return nil, err
+		}
+		ret.nist = enc
+		copy(ret.aad[1:], settings.AuthenticationKey)
+	}
+
 	return ret, nil
 }

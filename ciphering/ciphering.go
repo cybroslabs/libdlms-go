@@ -154,13 +154,7 @@ func NewCiphering(settings *CipheringSettings) (Ciphering, error) {
 		return nil, err
 	}
 
-	aa, err := aes.NewCipher(settings.EncryptionKey)
-	if err != nil {
-		return nil, err
-	}
-
 	g := &ciphering{
-		aes:                       aa,
 		authenticationMechanismId: settings.AuthenticationMechanismId,
 		clientPrivateKey:          settings.ClientPrivateKey,
 		serverCertificate:         settings.ServerCertificate,
@@ -168,10 +162,20 @@ func NewCiphering(settings *CipheringSettings) (Ciphering, error) {
 		ctos:                      slices.Clone(settings.CtoS),
 		password:                  slices.Clone(settings.Password),
 	}
-	copy(g.aadbuf[1:], settings.AuthenticationKey)
-	g.aad = g.aadbuf[:1+len(settings.AuthenticationKey)]
-	g.ak = g.aadbuf[1 : 1+len(settings.AuthenticationKey)]
-	g.make_tables()
+
+	switch g.authenticationMechanismId {
+	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa:
+		aa, err := aes.NewCipher(settings.EncryptionKey)
+		if err != nil {
+			return nil, err
+		}
+		g.aes = aa
+
+		copy(g.aadbuf[1:], settings.AuthenticationKey)
+		g.aad = g.aadbuf[:1+len(settings.AuthenticationKey)]
+		g.ak = g.aadbuf[1 : 1+len(settings.AuthenticationKey)]
+		g.make_tables()
+	}
 	return g, nil
 }
 
@@ -358,6 +362,18 @@ func (g *ciphering) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint
 	if apdu == nil {
 		return nil, fmt.Errorf("apdu is nil")
 	}
+	switch g.authenticationMechanismId {
+	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa:
+	default:
+		if ret != nil && cap(ret) >= len(apdu) {
+			ret = ret[:len(apdu)]
+		} else {
+			ret = make([]byte, len(apdu))
+		}
+		copy(ret, apdu) // in that case, yes, wasteful copy, but it should be copied as we dont know if apdu wont be reused
+		return ret, nil
+	}
+
 	iv := g.tmp[:AES_BLOCK_SIZE] // a bit hardcore
 	copy(iv, g.systemtitleS)
 	iv[8] = byte(fc >> 24)
@@ -431,6 +447,12 @@ func (g *ciphering) GetDecryptorStream2(scControl byte, scContent byte, fc uint3
 	if apdu == nil {
 		return nil, fmt.Errorf("apdu is nil")
 	}
+	switch g.authenticationMechanismId {
+	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa:
+	default:
+		return apdu, nil
+	}
+
 	iv := g.tmp[:AES_BLOCK_SIZE] // a bit hardcore
 	copy(iv, g.systemtitleS)
 	iv[8] = byte(fc >> 24)
@@ -465,6 +487,18 @@ func (g *ciphering) encryptinternal(ret []byte, scControl byte, scContent byte, 
 	if apdu == nil {
 		return nil, fmt.Errorf("apdu is nil")
 	}
+	switch g.authenticationMechanismId {
+	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa:
+	default:
+		if ret != nil && cap(ret) >= len(apdu) {
+			ret = ret[:len(apdu)]
+		} else {
+			ret = make([]byte, len(apdu))
+		}
+		copy(ret, apdu)
+		return ret, nil
+	}
+
 	iv := g.tmp[:AES_BLOCK_SIZE] // a bit hardcore
 	copy(iv, systemtitle)
 	iv[8] = byte(fc >> 24)
@@ -488,7 +522,7 @@ func (g *ciphering) encryptinternal(ret []byte, scControl byte, scContent byte, 
 			copy(aad[1:], g.ak)
 			copy(aad[1+len(g.ak):], apdu)
 
-			if cap(ret) >= wl {
+			if ret != nil && cap(ret) >= wl {
 				ret = ret[:wl]
 			} else {
 				ret = make([]byte, wl)
@@ -510,7 +544,7 @@ func (g *ciphering) encryptinternal(ret []byte, scControl byte, scContent byte, 
 	case 0x30:
 		{
 			g.aad[0] = scContent
-			if cap(ret) >= wl {
+			if ret != nil && cap(ret) >= wl {
 				ret = ret[:wl]
 			} else {
 				ret = make([]byte, wl)
@@ -523,13 +557,17 @@ func (g *ciphering) encryptinternal(ret []byte, scControl byte, scContent byte, 
 }
 
 func (g *ciphering) GetEncryptLength(scControl byte, apdu []byte) (int, error) {
+	switch g.authenticationMechanismId {
+	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa:
+	default:
+		return len(apdu), nil
+	}
+
 	switch scControl & 0xf0 {
-	case 0x10:
+	case 0x10, 0x30:
 		return len(apdu) + GCM_TAG_LENGTH, nil
 	case 0x20:
 		return len(apdu), nil
-	case 0x30:
-		return len(apdu) + GCM_TAG_LENGTH, nil
 	}
 	return 0, fmt.Errorf("unsupported security control byte: %v", scControl)
 }
