@@ -118,6 +118,10 @@ type DlmsDateTime struct {
 	Status    byte
 }
 
+const (
+	DateTimeInvalidDeviation int16 = -32768
+)
+
 func (t *DlmsDateTime) String() string {
 	return fmt.Sprintf("%04d-%02d-%02d %02d:%02d:%02d.%02d UTC%+03d Status: %02x",
 		t.Date.Year, t.Date.Month, t.Date.Day,
@@ -133,7 +137,7 @@ func (t *DlmsDateTime) ToTime() (tt time.Time, err error) {
 		ns = int(t.Time.Hundredths) * 10000000
 	}
 	dev := 0
-	if t.Deviation != -32768 {
+	if t.Deviation != DateTimeInvalidDeviation {
 		dev = int(t.Deviation)
 	}
 	tt = time.Date(int(t.Date.Year), time.Month(t.Date.Month), int(t.Date.Day), int(t.Time.Hour), int(t.Time.Minute), int(t.Time.Second), ns, time.FixedZone("UTC", dev*60))
