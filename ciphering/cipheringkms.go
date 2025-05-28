@@ -127,7 +127,7 @@ func setcryptomode(a base.Authentication) (cset crypto.Hash, err error) {
 	case base.AuthenticationNone:
 		err = fmt.Errorf("no authentication mechanism set")
 	case base.AuthenticationLow:
-		err = fmt.Errorf("low authentication is not supported")
+		cset = crypto.Hash_HASH_NONE
 	case base.AuthenticationHigh:
 		err = fmt.Errorf("high authentication is not supported")
 	case base.AuthenticationHighMD5:
