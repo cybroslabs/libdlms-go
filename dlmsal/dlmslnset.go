@@ -28,9 +28,9 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]base.DlmsResultTag, error
 	local := &al.pdu
 	local.Reset()
 	local.WriteByte(byte(base.TagSetRequest))
+	local.WriteByte(byte(TagSetRequestNormal))
 	al.invokeid = (al.invokeid + 1) & 7
 	local.WriteByte(al.invokeid | al.settings.invokebyte)
-	local.WriteByte(byte(TagSetRequestNormal))
 	err := encodelnsetitem(local, &item)
 	if err != nil {
 		return nil, err
@@ -47,8 +47,8 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]base.DlmsResultTag, error
 	if local.Len()+sdata.Len() > al.maxPduSendSize-pduoverhead { // block transfer, count on 6 bytes for tag and worst length and tag, ok, possible byte wasting here
 		local.Reset() // possible large memory allocated here, but only for one job
 		local.WriteByte(byte(base.TagSetRequest))
-		local.WriteByte(al.invokeid | al.settings.invokebyte)
 		local.WriteByte(byte(TagSetRequestWithFirstDataBlock))
+		local.WriteByte(al.invokeid | al.settings.invokebyte)
 		_ = encodelnsetitem(local, &item)
 
 		if al.maxPduSendSize < pdublockoverhead+local.Len() {
@@ -115,8 +115,8 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]base.DlmsResultTag, error
 				// ask for another block
 				local.Reset()
 				local.WriteByte(byte(base.TagSetRequest))
-				local.WriteByte(al.invokeid | al.settings.invokebyte)
 				local.WriteByte(byte(TagSetRequestWithDataBlock))
+				local.WriteByte(al.invokeid | al.settings.invokebyte)
 				blno++
 			case TagSetResponseLastDataBlock:
 				if !last {
@@ -198,9 +198,9 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 	local := &al.pdu
 	local.Reset()
 	local.WriteByte(byte(base.TagSetRequest))
+	local.WriteByte(byte(TagSetRequestWithList))
 	al.invokeid = (al.invokeid + 1) & 7
 	local.WriteByte(al.invokeid | al.settings.invokebyte)
-	local.WriteByte(byte(TagSetRequestWithList))
 	encodelength(local, uint(len(items)))
 	for _, i := range items {
 		err = encodelnsetitem(local, &i)
@@ -223,8 +223,8 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 	if local.Len()+sdata.Len() > al.maxPduSendSize-pduoverhead { // block transfer, count on 6 bytes for tag and worst length and tag, ok, possible byte wasting here
 		local.Reset()
 		local.WriteByte(byte(base.TagSetRequest))
-		local.WriteByte(al.invokeid | al.settings.invokebyte)
 		local.WriteByte(byte(TagSetRequestWithListAndFirstDataBlock)) // yes yes i can force content to this
+		local.WriteByte(al.invokeid | al.settings.invokebyte)
 		encodelength(local, uint(len(items)))
 		for _, i := range items {
 			_ = encodelnsetitem(local, &i)
@@ -300,8 +300,8 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 				// ask for another block
 				local.Reset()
 				local.WriteByte(byte(base.TagSetRequest))
-				local.WriteByte(al.invokeid | al.settings.invokebyte)
 				local.WriteByte(byte(TagSetRequestWithDataBlock))
+				local.WriteByte(al.invokeid | al.settings.invokebyte)
 				blno++
 			case TagSetResponseLastDataBlockWithList:
 				if !last {
