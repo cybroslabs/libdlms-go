@@ -13,12 +13,12 @@ require (
 	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250519155744-55703ea1f237 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250528174236-200df99c418a // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 )
 
 require (
-	github.com/cybroslabs/hes-2-apis v0.0.0-20250522124923-27f6b2017145
+	github.com/cybroslabs/hes-2-apis v0.0.0-20250530203856-ba71c8f87ee1
 	go.uber.org/multierr v1.11.0 // indirect
 	k8s.io/utils v0.0.0-20250502105355-0f33e8f1c979
 )
