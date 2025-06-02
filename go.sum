@@ -1,5 +1,5 @@
-github.com/cybroslabs/hes-2-apis v0.0.0-20250530203856-ba71c8f87ee1 h1:P1KTMPU0d+m9iAEe6S7M+ARTkS4q3kRUuN+NUY6RKAs=
-github.com/cybroslabs/hes-2-apis v0.0.0-20250530203856-ba71c8f87ee1/go.mod h1:rRFN9wQKIN2qevS4fovSeeqDg5sY8V6A4/HUJP/3L9E=
+github.com/cybroslabs/hes-2-apis v0.0.0-20250602194148-b0d8a0fd71dd h1:ei7Sah5PjEUqpR0PuQtFL6Nokx5HXtSUjUte0+GwWOg=
+github.com/cybroslabs/hes-2-apis v0.0.0-20250602194148-b0d8a0fd71dd/go.mod h1:hiqcvJCJvxDenH0gaaaky7Cjv9pJN5a8lFWrG8pF7fY=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/go-logr/logr v1.4.2 h1:6pFjapn8bFcIbiKo3XT4j/BhANplGihG6tvd+8rYgrY=
