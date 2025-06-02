@@ -18,7 +18,7 @@ require (
 )
 
 require (
-	github.com/cybroslabs/hes-2-apis v0.0.0-20250530203856-ba71c8f87ee1
+	github.com/cybroslabs/hes-2-apis v0.0.0-20250602194148-b0d8a0fd71dd
 	go.uber.org/multierr v1.11.0 // indirect
 	k8s.io/utils v0.0.0-20250502105355-0f33e8f1c979
 )
