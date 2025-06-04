@@ -7,9 +7,9 @@ import (
 	"io"
 	"slices"
 
-	"github.com/cybroslabs/hes-2-apis/gen/go/crypto"
-	"github.com/cybroslabs/hes-2-apis/gen/go/services/svccrypto"
 	"github.com/cybroslabs/libdlms-go/base"
+	"github.com/cybroslabs/ouro-api-shared/gen/go/crypto"
+	"github.com/cybroslabs/ouro-api-shared/gen/go/services/svccrypto"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
