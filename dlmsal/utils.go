@@ -24,7 +24,7 @@ func codedlength(len uint) int {
 	return 5
 }
 
-func EncodeCaptureObject(classId uint16, obis *DlmsObis, attribute int8, version uint16) DlmsData {
+func EncodeCaptureObject(classId uint16, obis DlmsObis, attribute int8, version uint16) DlmsData {
 	ch := make([]DlmsData, 4) // this bellow should be done using some function with type checking... poor maintainability
 	ch[0] = DlmsData{Tag: TagLongUnsigned, Value: classId}
 	ch[1] = DlmsData{Tag: TagOctetString, Value: obis}
@@ -35,7 +35,7 @@ func EncodeCaptureObject(classId uint16, obis *DlmsObis, attribute int8, version
 
 func EncodeSimpleRangeAccess(from *DlmsDateTime, to *DlmsDateTime) DlmsData {
 	ch := make([]DlmsData, 4)
-	ch[0] = EncodeCaptureObject(8, &DlmsObis{A: 0, B: 0, C: 1, D: 0, E: 0, F: 255}, 2, 0)
+	ch[0] = EncodeCaptureObject(8, DlmsObis{A: 0, B: 0, C: 1, D: 0, E: 0, F: 255}, 2, 0)
 	ch[1] = DlmsData{Tag: TagOctetString, Value: *from}
 	ch[2] = DlmsData{Tag: TagOctetString, Value: *to}
 	ch[3] = DlmsData{Tag: TagArray, Value: nil}
