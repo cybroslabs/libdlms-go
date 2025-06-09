@@ -35,13 +35,13 @@ func recast(trg reflect.Value, data *DlmsData) error {
 			if err != nil {
 				return err
 			}
-			tt, err := bb.ToTime()
+			tt, err := bb.AsTime()
 			if err != nil {
 				return err
 			}
 			trg.Set(reflect.ValueOf(tt))
 		case DlmsDateTime:
-			tt, err := b.ToTime()
+			tt, err := b.AsTime()
 			if err != nil {
 				return err
 			}

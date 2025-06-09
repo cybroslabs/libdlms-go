@@ -100,7 +100,7 @@ func (n *Value) ToString() string {
 		return n.Value.(string)
 	case DateTime:
 		v := n.Value.(DlmsDateTime)
-		r, err := v.ToTime()
+		r, err := v.AsTime()
 		if err != nil {
 			break
 		}
@@ -128,7 +128,7 @@ func (t *DlmsDateTime) String() string {
 		t.Time.Hour, t.Time.Minute, t.Time.Second, t.Time.Hundredths, t.Deviation, t.Status)
 }
 
-func (t *DlmsDateTime) ToTime() (tt time.Time, err error) {
+func (t *DlmsDateTime) AsTime() (tt time.Time, err error) {
 	if t.Date.Year == 0xffff || t.Date.Month == 0xff || t.Date.Day == 0xff || t.Time.Hour == 0xff || t.Time.Minute == 0xff {
 		return tt, fmt.Errorf("invalid date or time")
 	}
@@ -144,10 +144,10 @@ func (t *DlmsDateTime) ToTime() (tt time.Time, err error) {
 	return
 }
 
-func (t *DlmsDateTime) ToUTCTime() (tt time.Time, err error) {
+func (t *DlmsDateTime) AsUTCTime() (tt time.Time, err error) {
 	tmp := t.Deviation
 	t.Deviation = 0
-	tt, err = t.ToTime()
+	tt, err = t.AsTime()
 	t.Deviation = tmp
 	return
 }
