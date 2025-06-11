@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func Cast(trg interface{}, data DlmsData) error {
+func Cast(trg any, data DlmsData) error {
 	r := reflect.ValueOf(trg)
 	if r.Kind() != reflect.Pointer || r.IsNil() {
 		return fmt.Errorf("target must be a non-nil pointer")

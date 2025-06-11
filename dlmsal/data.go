@@ -47,8 +47,8 @@ const (
 )
 
 type DlmsData struct {
-	Value interface{}
 	Tag   dataTag
+	Value any
 }
 
 func NewDlmsDataError(err base.DlmsResultTag) DlmsData {
@@ -71,6 +71,11 @@ type DlmsCompactArray struct {
 	tag   dataTag
 	tags  []dataTag
 	value []DlmsData
+}
+
+func DecodeData(src io.Reader) (data DlmsData, c int, err error) {
+	var tmp tmpbuffer
+	return decodeDataTag(src, &tmp)
 }
 
 func decodeDataTag(src io.Reader, tmpbuffer *tmpbuffer) (data DlmsData, c int, err error) {

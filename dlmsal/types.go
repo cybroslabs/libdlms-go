@@ -85,7 +85,7 @@ const (
 
 type Value struct {
 	Type  ValueType
-	Value interface{}
+	Value any
 }
 
 func (n *Value) ToString() string {
