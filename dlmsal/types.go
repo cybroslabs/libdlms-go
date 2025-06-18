@@ -218,8 +218,27 @@ type DlmsObis struct {
 	F byte
 }
 
+type DlmsObisLayoutType byte
+
+const (
+	ObisLayoutStandart DlmsObisLayoutType = 0x00
+	ObisLayoutAsterisk DlmsObisLayoutType = 0x01
+	ObisLayoutDots     DlmsObisLayoutType = 0x02
+)
+
 func (o DlmsObis) String() string {
 	return fmt.Sprintf("%d-%d:%d.%d.%d.%d", o.A, o.B, o.C, o.D, o.E, o.F)
+}
+
+func (o DlmsObis) Format(layout DlmsObisLayoutType) string {
+	switch layout {
+	case ObisLayoutAsterisk:
+		return fmt.Sprintf("%d-%d:%d.%d.%d*%d", o.A, o.B, o.C, o.D, o.E, o.F)
+	case ObisLayoutDots:
+		return fmt.Sprintf("%d.%d.%d.%d.%d.%d", o.A, o.B, o.C, o.D, o.E, o.F)
+	default:
+		return o.String()
+	}
 }
 
 func (o DlmsObis) Bytes() []byte {
@@ -251,14 +270,19 @@ func NewDlmsObisFromString(src string) (ob DlmsObis, err error) {
 	return
 }
 
+var stdobisregex = regexp.MustCompile(`^(\d+)-(\d+):(\d+)\.(\d+)(\.(\d+)([\.*](\d+))?)?$`)
+var dotobisregex = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)\.(\d+)(\.(\d+)(\.(\d+))?)?$`)
+
 func NewDlmsObisFromStringComp(src string) (ob DlmsObis, cmp int, err error) {
-	rg := regexp.MustCompile(`^((\d+)-(\d+):)?(\d+)\.(\d+)(\.(\d+)(\.(\d+))?)?$`)
-	if !rg.MatchString(src) {
-		err = fmt.Errorf("invalid format")
-		return
+	m := stdobisregex.FindStringSubmatch(src)
+	if m == nil {
+		m = dotobisregex.FindStringSubmatch(src)
+		if m == nil {
+			err = fmt.Errorf("invalid format")
+			return
+		}
 	}
 	cmp = ObisHasC | ObisHasD
-	m := rg.FindStringSubmatch(src)
 	a, b := 0, 0
 	if len(m[1]) > 0 {
 		a = mustatoi(m[2])
