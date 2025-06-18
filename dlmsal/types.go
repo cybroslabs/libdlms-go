@@ -271,7 +271,7 @@ func NewDlmsObisFromString(src string) (ob DlmsObis, err error) {
 }
 
 var stdobisregex = regexp.MustCompile(`^((\d+)-(\d+):)?(\d+)\.(\d+)(\.(\d+)([\.*](\d+))?)?$`)
-var dotobisregex = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)\.(\d+)(\.(\d+)(\.(\d+))?)?$`)
+var dotobisregex = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)\.(\d+)\.(\d+)(\.(\d+))?$`)
 
 func NewDlmsObisFromStringComp(src string) (ob DlmsObis, cmp int, err error) {
 	var a, b, c, d, e, f int
@@ -285,17 +285,14 @@ func NewDlmsObisFromStringComp(src string) (ob DlmsObis, cmp int, err error) {
 		}
 		a = mustatoi(m[1])
 		b = mustatoi(m[2])
-		cmp |= ObisHasA | ObisHasB
+		cmp |= ObisHasA | ObisHasB | ObisHasE
 		c = mustatoi(m[3])
 		d = mustatoi(m[4])
-		e, f = 255, 255
-		if len(m[5]) > 0 {
-			e = mustatoi(m[6])
-			cmp |= ObisHasE
-			if len(m[7]) > 0 {
-				f = mustatoi(m[8])
-				cmp |= ObisHasF
-			}
+		e = mustatoi(m[5])
+		f = 255
+		if len(m[6]) > 0 {
+			f = mustatoi(m[7])
+			cmp |= ObisHasF
 		}
 	} else {
 		if len(m[1]) > 0 {
