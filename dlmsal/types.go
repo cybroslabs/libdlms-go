@@ -270,10 +270,12 @@ func NewDlmsObisFromString(src string) (ob DlmsObis, err error) {
 	return
 }
 
-var stdobisregex = regexp.MustCompile(`^(\d+)-(\d+):(\d+)\.(\d+)(\.(\d+)([\.*](\d+))?)?$`)
+var stdobisregex = regexp.MustCompile(`^((\d+)-(\d+):)?(\d+)\.(\d+)(\.(\d+)([\.*](\d+))?)?$`)
 var dotobisregex = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)\.(\d+)(\.(\d+)(\.(\d+))?)?$`)
 
 func NewDlmsObisFromStringComp(src string) (ob DlmsObis, cmp int, err error) {
+	var a, b, c, d, e, f int
+	cmp = ObisHasC | ObisHasD
 	m := stdobisregex.FindStringSubmatch(src)
 	if m == nil {
 		m = dotobisregex.FindStringSubmatch(src)
@@ -281,27 +283,41 @@ func NewDlmsObisFromStringComp(src string) (ob DlmsObis, cmp int, err error) {
 			err = fmt.Errorf("invalid format")
 			return
 		}
-	}
-	cmp = ObisHasC | ObisHasD
-	a, b := 0, 0
-	if len(m[1]) > 0 {
-		a = mustatoi(m[2])
-		b = mustatoi(m[3])
+		a = mustatoi(m[1])
+		b = mustatoi(m[2])
 		cmp |= ObisHasA | ObisHasB
-	}
-	c := mustatoi(m[4])
-	d := mustatoi(m[5])
-	e, f := 255, 255
-	if len(m[6]) > 0 {
-		e = mustatoi(m[7])
-		cmp |= ObisHasE
-		if len(m[8]) > 0 {
-			f = mustatoi(m[9])
-			cmp |= ObisHasF
+		c = mustatoi(m[3])
+		d = mustatoi(m[4])
+		e, f = 255, 255
+		if len(m[5]) > 0 {
+			e = mustatoi(m[6])
+			cmp |= ObisHasE
+			if len(m[7]) > 0 {
+				f = mustatoi(m[8])
+				cmp |= ObisHasF
+			}
+		}
+	} else {
+		if len(m[1]) > 0 {
+			a = mustatoi(m[2])
+			b = mustatoi(m[3])
+			cmp |= ObisHasA | ObisHasB
+		}
+		c = mustatoi(m[4])
+		d = mustatoi(m[5])
+		e, f = 255, 255
+		if len(m[6]) > 0 {
+			e = mustatoi(m[7])
+			cmp |= ObisHasE
+			if len(m[8]) > 0 {
+				f = mustatoi(m[9])
+				cmp |= ObisHasF
+			}
 		}
 	}
+
 	if a > 255 || b > 255 || c > 255 || d > 255 || e > 255 || f > 255 {
-		err = fmt.Errorf("invalid value")
+		err = fmt.Errorf("invalid value, all parts must be 0-255")
 		return
 	}
 	ob.A = byte(a)
