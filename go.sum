@@ -1,5 +1,5 @@
-github.com/cybroslabs/ouro-api-shared v0.0.0-20250621170133-adeb9578c628 h1:7FTxfU9i4774nS4YH8ZEQgQkX5dGJ0e9HpPxt6mj+Fc=
-github.com/cybroslabs/ouro-api-shared v0.0.0-20250621170133-adeb9578c628/go.mod h1:y6KACX7+AhfHq6yDlACVfgvdEMFfFqegKbULnP9SYe4=
+github.com/cybroslabs/ouro-api-shared v0.0.0-20250703143118-ae8b0510c1ae h1:9eiMou6rfNCdzCRnno73Xt+EGKik3BGhREoBUELEo9U=
+github.com/cybroslabs/ouro-api-shared v0.0.0-20250703143118-ae8b0510c1ae/go.mod h1:QlpJ/vqb2edeMCGT86CASgfFGKxAIZ4Qc5TMFIy45Gk=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/go-logr/logr v1.4.2 h1:6pFjapn8bFcIbiKo3XT4j/BhANplGihG6tvd+8rYgrY=
