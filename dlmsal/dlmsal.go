@@ -187,6 +187,7 @@ func NewSettingsWithLowAuthenticationLN(password string) (*DlmsSettings, error) 
 		password:                  []byte(password),
 		HighPriority:              true,
 		ConfirmedRequests:         true,
+		EmptyRLRQ:                 true,
 		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
 			base.ConformanceBlockBlockTransferWithAction | base.ConformanceBlockAction | base.ConformanceBlockGet | base.ConformanceBlockSet |
 			base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences | base.ConformanceBlockAttribute0SupportedWithGet,
@@ -199,6 +200,7 @@ func NewSettingsNoAuthenticationLN() (*DlmsSettings, error) {
 		ApplicationContext:        base.ApplicationContextLNNoCiphering,
 		HighPriority:              true,
 		ConfirmedRequests:         true,
+		EmptyRLRQ:                 true,
 		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
 			base.ConformanceBlockBlockTransferWithAction | base.ConformanceBlockAction | base.ConformanceBlockGet | base.ConformanceBlockSet |
 			base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences | base.ConformanceBlockAttribute0SupportedWithGet,
@@ -217,6 +219,7 @@ func NewSettingsWithCipheringLN(systemtitle []byte, g ciphering.Ciphering, ctosh
 		ApplicationContext:        base.ApplicationContextLNCiphering,
 		HighPriority:              true,
 		ConfirmedRequests:         true,
+		EmptyRLRQ:                 true,
 		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
 			base.ConformanceBlockBlockTransferWithAction | base.ConformanceBlockAction | base.ConformanceBlockGet | base.ConformanceBlockSet |
 			base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences | base.ConformanceBlockAttribute0SupportedWithGet |
