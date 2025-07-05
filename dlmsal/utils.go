@@ -168,12 +168,6 @@ func decodetag(src []byte, tmp *tmpbuffer) (byte, int, []byte, error) {
 	return tag, c + 1 + int(dlen), src[1+c : 1+c+int(dlen)], nil
 }
 
-func newcopy(src []byte) []byte {
-	dst := make([]byte, len(src))
-	copy(dst, src)
-	return dst
-}
-
 var _units = [...]string{"unknown",
 	// 1
 	"a",

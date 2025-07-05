@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/cybroslabs/libdlms-go/base"
@@ -159,7 +160,7 @@ func (d *DlmsSettings) SetDedicatedKey(key []byte, g ciphering.Ciphering) {
 		d.dedcipher = nil
 	} else {
 		d.dedcipher = g
-		d.dedicatedkey = newcopy(key) // regardless error
+		d.dedicatedkey = slices.Clone(key) // regardless error
 	}
 }
 
@@ -220,9 +221,9 @@ func NewSettingsWithCipheringLN(systemtitle []byte, g ciphering.Ciphering, ctosh
 			base.ConformanceBlockBlockTransferWithAction | base.ConformanceBlockAction | base.ConformanceBlockGet | base.ConformanceBlockSet |
 			base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences | base.ConformanceBlockAttribute0SupportedWithGet |
 			base.ConformanceBlockGeneralProtection,
-		clientsystemtitle: newcopy(systemtitle),
+		clientsystemtitle: slices.Clone(systemtitle),
 		cipher:            g,
-		password:          newcopy(ctoshash),
+		password:          slices.Clone(ctoshash),
 		framecounter:      fc,
 		Security:          base.SecurityEncryption | base.SecurityAuthentication,
 	}

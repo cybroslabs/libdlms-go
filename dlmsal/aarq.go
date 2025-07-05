@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"slices"
 
 	"github.com/cybroslabs/libdlms-go/base"
 )
@@ -153,7 +154,7 @@ func (d *dlmsal) encodeaarq() (out []byte, outnosec []byte, err error) {
 
 	encodetag(&buf, byte(base.TagAARQ), content.Bytes())
 	out = buf.Bytes()
-	outnosec = newcopy(out)
+	outnosec = slices.Clone(out)
 	clear(outnosec[st:en])
 	return
 }
@@ -224,7 +225,7 @@ func parseAPTitle(tag aaretag, tmp *tmpbuffer) (out []byte, err error) {
 	if t != 0x04 {
 		return nil, fmt.Errorf("invalid A4 tag content")
 	}
-	out = newcopy(d)
+	out = slices.Clone(d)
 	return
 }
 
@@ -253,7 +254,7 @@ func parseSenderAcseRequirements(tag aaretag, tmp *tmpbuffer) (stoc []byte, err 
 	if t != 0x80 {
 		return nil, fmt.Errorf("invalid AA tag content")
 	}
-	stoc = newcopy(d)
+	stoc = slices.Clone(d)
 	return
 }
 
