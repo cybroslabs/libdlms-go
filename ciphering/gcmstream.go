@@ -241,7 +241,7 @@ func (g *gcmdecstream30) Read(p []byte) (n int, err error) {
 	if g.ineof { // check tag here
 		bl := (n - GCM_TAG_LENGTH) >> AES_BLOCK_SIZE_ROT // having there tag for sure already
 		bb := g.block[:n-GCM_TAG_LENGTH]
-		for i := 0; i < bl; i++ {
+		for range bl {
 			xor_block2(tmp, bb, g.S)
 			m.gf_mult(tmp, g.S)
 			m.aes.Encrypt(tmp, g.J0)
@@ -273,7 +273,7 @@ func (g *gcmdecstream30) Read(p []byte) (n int, err error) {
 	} else {
 		bl := (len(g.block) >> AES_BLOCK_SIZE_ROT) - 1 // keep last block in the buffer till some eof here, always full block read
 		bb := g.block[:]
-		for i := 0; i < bl; i++ {
+		for range bl {
 			xor_block2(tmp, bb, g.S)
 			m.gf_mult(tmp, g.S)
 			m.aes.Encrypt(tmp, g.J0)

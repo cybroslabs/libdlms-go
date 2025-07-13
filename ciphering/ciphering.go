@@ -385,7 +385,7 @@ func (g *ciphering) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint
 	iv[14] = 0
 	iv[15] = 1
 
-	switch scControl & 0xf0 {
+	switch scControl & 0x70 {
 	case 0x10:
 		{
 			if len(apdu) < GCM_TAG_LENGTH {
@@ -464,7 +464,7 @@ func (g *ciphering) GetDecryptorStream2(scControl byte, scContent byte, fc uint3
 	iv[14] = 0
 	iv[15] = 1
 
-	switch scControl & 0xf0 {
+	switch scControl & 0x70 {
 	case 0x10:
 		return newgcmdecstream10(g, scContent, apdu), nil
 	case 0x20:
@@ -514,7 +514,7 @@ func (g *ciphering) encryptinternal(ret []byte, scControl byte, scContent byte, 
 	if err != nil {
 		return nil, err
 	}
-	switch scControl & 0xf0 {
+	switch scControl & 0x70 {
 	case 0x10:
 		{
 			aad := make([]byte, 1+len(g.ak)+len(apdu))
@@ -563,7 +563,7 @@ func (g *ciphering) GetEncryptLength(scControl byte, apdu []byte) (int, error) {
 		return len(apdu), nil
 	}
 
-	switch scControl & 0xf0 {
+	switch scControl & 0x70 {
 	case 0x10, 0x30:
 		return len(apdu) + GCM_TAG_LENGTH, nil
 	case 0x20:

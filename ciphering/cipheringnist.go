@@ -211,7 +211,7 @@ func (g *cipheringnist) Decrypt2(ret []byte, scControl byte, scContent byte, fc 
 
 	copy(g.iv[:], g.systemtitleS)
 	binary.BigEndian.PutUint32(g.iv[8:], fc)
-	switch scControl & 0x30 {
+	switch scControl & 0x70 {
 	case 0x10:
 		if len(apdu) < GCM_TAG_LENGTH {
 			return nil, fmt.Errorf("too short ciphered data, no space for tag")
@@ -262,7 +262,7 @@ func (g *cipheringnist) encryptinternal(ret []byte, scControl byte, scContent by
 
 	copy(g.iv[:], title)
 	binary.BigEndian.PutUint32(g.iv[8:], fc)
-	switch scControl & 0x30 {
+	switch scControl & 0x70 {
 	case 0x10:
 		aad := make([]byte, len(g.aad)+len(apdu))
 		aad[0] = scContent
@@ -319,7 +319,7 @@ func (g *cipheringnist) GetEncryptLength(scControl byte, apdu []byte) (int, erro
 		return len(apdu), nil
 	}
 
-	switch scControl & 0x30 {
+	switch scControl & 0x70 {
 	case 0x10, 0x30:
 		return len(apdu) + GCM_TAG_LENGTH, nil
 	}
