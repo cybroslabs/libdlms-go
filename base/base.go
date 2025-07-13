@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 )
 
-type Stream interface {
+type Stream interface { // todo add ByteReader here
 	io.ReadCloser
 	Open() error
 	Disconnect() error // hard end of connection without solving any unassociation or so

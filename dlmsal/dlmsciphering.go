@@ -1,12 +1,14 @@
 package dlmsal
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
 
 	"github.com/cybroslabs/libdlms-go/base"
+	v44 "github.com/cybroslabs/libdlms-go/v44"
 )
 
 // tag is common byte in this case, could be also 9 for octetstring and so on, it encodes also length
@@ -103,6 +105,10 @@ func (d *dlmsal) decryptpacket(apdu []byte, ded bool) ([]byte, error) { // not c
 	}
 	if err != nil {
 		return nil, err
+	}
+
+	if apdu[0]&byte(base.SecurityCompression) != 0 { // compression is applied
+		return v44.Decompress(d.decompbuffer[:0], bufio.NewReader(bytes.NewReader(d.cryptbuffer)))
 	}
 	return d.cryptbuffer, nil
 }

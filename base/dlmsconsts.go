@@ -26,6 +26,7 @@ const (
 	SecurityNone           DlmsSecurity = 0    // Transport security is not used.
 	SecurityAuthentication DlmsSecurity = 0x10 // Authentication security is used.
 	SecurityEncryption     DlmsSecurity = 0x20 // Encryption security is used.
+	SecurityCompression    DlmsSecurity = 0x80 // Compression security is used.
 	SecuritySuite0         DlmsSecurity = 0
 	SecuritySuite1         DlmsSecurity = 1
 	SecuritySuite2         DlmsSecurity = 2

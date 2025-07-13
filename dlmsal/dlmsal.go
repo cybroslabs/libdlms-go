@@ -117,10 +117,11 @@ type dlmsal struct {
 	maxPduSendSize int
 
 	// things for communications/data parsing
-	invokeid    byte
-	tmpbuffer   tmpbuffer
-	pdu         bytes.Buffer // reused for sending requests
-	cryptbuffer []byte       // reusable crypt buffer
+	invokeid     byte
+	tmpbuffer    tmpbuffer
+	pdu          bytes.Buffer // reused for sending requests
+	cryptbuffer  []byte       // reusable crypt buffer
+	decompbuffer []byte       // reusable decompression buffer
 }
 
 type DlmsSettings struct { // damn too many settings

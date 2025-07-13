@@ -1,12 +1,15 @@
 package dlmsal
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
 
 	"github.com/cybroslabs/libdlms-go/base"
 	"github.com/cybroslabs/libdlms-go/ciphering"
+	v44 "github.com/cybroslabs/libdlms-go/v44"
 )
 
 // send and optionally encrypt packet at pdu to transport layer, returns also answer stream object with transparent ciphering and tag reading, hell
@@ -134,6 +137,14 @@ func (d *dlmsal) recvcipheredpdu(rtag base.CosemTag, ded bool, usegeneral bool) 
 	if err != nil {
 		return
 	}
+	if d.tmpbuffer[0]&byte(base.SecurityCompression) != 0 { // compression is applied, just try to decompress that, not memory effective right now, it is not streamable so well
+		d.decompbuffer, err = v44.Decompress(d.decompbuffer[:0], bufio.NewReader(str))
+		if err != nil {
+			return
+		}
+		str = bytes.NewReader(d.decompbuffer)
+	}
+
 	_, err = io.ReadFull(str, d.tmpbuffer[:1])
 	if err != nil {
 		return
