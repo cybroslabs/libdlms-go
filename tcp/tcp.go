@@ -175,12 +175,10 @@ func (t *tcp) Read(p []byte) (int, error) {
 		return n, nil
 	}
 	if t.inerror != nil {
-		err := t.inerror
-		t.inerror = nil
-		if errors.Is(err, os.ErrDeadlineExceeded) {
+		if errors.Is(t.inerror, os.ErrDeadlineExceeded) {
 			return 0, base.ErrCommunicationTimeout
 		}
-		return 0, err
+		return 0, t.inerror
 	}
 
 	t.setcommdeadline()
@@ -201,14 +199,13 @@ func (t *tcp) Read(p []byte) (int, error) {
 	}
 
 	if t.inerror != nil {
-		err := t.inerror
-		t.inerror = nil
-		if errors.Is(err, os.ErrDeadlineExceeded) {
+		if errors.Is(t.inerror, os.ErrDeadlineExceeded) {
 			return 0, base.ErrCommunicationTimeout
 		}
-		return 0, err
+		return 0, t.inerror
 	}
-	return 0, io.EOF // this is a bit questionable
+	t.inerror = io.EOF // this shouldnt happen anyway
+	return 0, io.EOF   // this is a bit questionable
 }
 
 func (t *tcp) GetRxTxBytes() (int64, int64) {
