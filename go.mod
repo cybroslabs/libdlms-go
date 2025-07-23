@@ -7,7 +7,7 @@ toolchain go1.24.5
 require (
 	github.com/cybroslabs/ouro-api-shared v0.0.0-20250722024947-01a9ab13d6ad
 	go.uber.org/zap v1.27.0
-	google.golang.org/grpc v1.73.0
+	google.golang.org/grpc v1.74.2
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
 )
 
