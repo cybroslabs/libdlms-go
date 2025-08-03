@@ -5,7 +5,7 @@ go 1.23.8
 toolchain go1.24.5
 
 require (
-	github.com/cybroslabs/ouro-api-shared v0.0.0-20250722024947-01a9ab13d6ad
+	github.com/cybroslabs/ouro-api-shared v0.0.0-20250801115648-4e9d405ed9b8
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.74.2
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
@@ -18,6 +18,6 @@ require (
 	golang.org/x/net v0.42.0 // indirect
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20250721164621-a45f3dfb1074 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20250728155136-f173205681a0 // indirect
 	google.golang.org/protobuf v1.36.6 // indirect
 )
