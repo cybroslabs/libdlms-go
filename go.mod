@@ -2,7 +2,7 @@ module github.com/cybroslabs/libdlms-go
 
 go 1.23.8
 
-toolchain go1.24.5
+toolchain go1.24.6
 
 require (
 	github.com/cybroslabs/ouro-api-shared v0.0.0-20250805135121-37fd0adba6fb
