@@ -3,7 +3,7 @@ module github.com/cybroslabs/libdlms-go
 go 1.24.6
 
 require (
-	github.com/cybroslabs/ouro-api-shared v0.0.0-20250811111948-d3d5ec1bd2fa
+	github.com/cybroslabs/ouro-api-shared v0.0.0-20250811185649-3957e01c765e
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.74.2
 	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
