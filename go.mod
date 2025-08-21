@@ -6,7 +6,7 @@ require (
 	github.com/cybroslabs/ouro-api-shared v0.0.0-20250815115508-d03215944a80
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.75.0
-	k8s.io/utils v0.0.0-20250604170112-4c0f3b243397
+	k8s.io/utils v0.0.0-20250820121507-0af2bda4dd1d
 )
 
 require (
