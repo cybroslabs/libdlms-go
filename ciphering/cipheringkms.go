@@ -90,8 +90,8 @@ func (g *cipheringkms) init() (err error) {
 
 	_, err = g.sendcmd(crypto.DlmsIn_builder{
 		Init: crypto.DlmsInit_builder{
-			Encryption:   ptr.To(crypto.AuthenticatedEncryption_AE_AES_GCM_128),
-			Signature:    ptr.To(crypto.DigitalSignature_DS_ECDSA_NONE),
+			Encryption:   crypto.AuthenticatedEncryption_AE_AES_GCM_128.Enum(),
+			Signature:    crypto.DigitalSignature_DS_ECDSA_UNSPECIFIED.Enum(),
 			DriverId:     &g.driverId,
 			SerialNumber: &g.serialNumber,
 			AccessLevel:  &g.accessLevel,
@@ -127,7 +127,7 @@ func setcryptomode(a base.Authentication) (cset crypto.Hash, err error) {
 	case base.AuthenticationNone:
 		err = fmt.Errorf("no authentication mechanism set")
 	case base.AuthenticationLow:
-		cset = crypto.Hash_HASH_NONE
+		cset = crypto.Hash_HASH_UNSPECIFIED
 	case base.AuthenticationHigh:
 		err = fmt.Errorf("high authentication is not supported")
 	case base.AuthenticationHighMD5:
@@ -159,7 +159,7 @@ func (g *cipheringkms) Hash(sc byte, fc uint32) ([]byte, error) {
 
 	return g.sendcmd(crypto.DlmsIn_builder{
 		Hash: crypto.DlmsHash_builder{
-			Direction:       ptr.To(crypto.HashDirection_CLIENT_TO_SERVER),
+			Direction:       crypto.HashDirection_HASH_DIRECTION_CLIENT_TO_SERVER.Enum(),
 			Mode:            ptr.To(cset),
 			FrameCounter:    &fc,
 			SecurityControl: ptr.To(uint32(sc)),
@@ -180,7 +180,7 @@ func (g *cipheringkms) Verify(sc byte, fc uint32, hash []byte) (bool, error) {
 
 	_, err = g.sendcmd(crypto.DlmsIn_builder{
 		AuthVerify: crypto.DlmsAuthVerify_builder{
-			Direction:       ptr.To(crypto.HashDirection_SERVER_TO_CLIENT),
+			Direction:       crypto.HashDirection_HASH_DIRECTION_SERVER_TO_CLIENT.Enum(),
 			Mode:            ptr.To(cset),
 			FrameCounter:    &fc,
 			SecurityControl: ptr.To(uint32(sc)),
