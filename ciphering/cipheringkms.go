@@ -23,7 +23,7 @@ type CipheringKMS interface {
 
 type CipheringKMSSettings struct {
 	Logger                    *zap.SugaredLogger
-	ServiceClient             svccrypto.CryproServiceClient
+	ServiceClient             svccrypto.CryptoServiceClient
 	AccessLevel               string
 	SerialNumber              string
 	DriverId                  string
@@ -35,7 +35,7 @@ type CipheringKMSSettings struct {
 
 type cipheringkms struct {
 	logger                    *zap.SugaredLogger
-	serviceclient             svccrypto.CryproServiceClient
+	serviceclient             svccrypto.CryptoServiceClient
 	accessLevel               string
 	serialNumber              string
 	driverId                  string
