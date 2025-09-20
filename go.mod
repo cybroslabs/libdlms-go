@@ -1,6 +1,6 @@
 module github.com/cybroslabs/libdlms-go
 
-go 1.24.6
+go 1.25
 
 require (
 	github.com/cybroslabs/ouro-api-shared v0.0.0-20250917123249-748a07a37637
