@@ -166,9 +166,6 @@ func (d *DlmsSettings) SetDedicatedKey(key []byte, g ciphering.Ciphering) {
 }
 
 func NewSettingsWithLowAuthenticationSN(password string) (*DlmsSettings, error) {
-	if len(password) == 0 {
-		return nil, fmt.Errorf("password is empty")
-	}
 	return &DlmsSettings{
 		AuthenticationMechanismId: base.AuthenticationLow,
 		ApplicationContext:        base.ApplicationContextSNNoCiphering,
@@ -179,9 +176,6 @@ func NewSettingsWithLowAuthenticationSN(password string) (*DlmsSettings, error) 
 }
 
 func NewSettingsWithLowAuthenticationLN(password string) (*DlmsSettings, error) {
-	if len(password) == 0 {
-		return nil, fmt.Errorf("password is empty")
-	}
 	return &DlmsSettings{
 		AuthenticationMechanismId: base.AuthenticationLow,
 		ApplicationContext:        base.ApplicationContextLNNoCiphering,
