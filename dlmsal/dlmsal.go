@@ -175,6 +175,15 @@ func NewSettingsWithLowAuthenticationSN(password string) (*DlmsSettings, error) 
 	}, nil
 }
 
+func NewSettingsWithNoAuthenticationSN() (*DlmsSettings, error) {
+	return &DlmsSettings{
+		AuthenticationMechanismId: base.AuthenticationNone,
+		ApplicationContext:        base.ApplicationContextSNNoCiphering,
+		ConformanceBlock: base.ConformanceBlockBlockTransferWithGetOrRead | base.ConformanceBlockBlockTransferWithSetOrWrite |
+			base.ConformanceBlockRead | base.ConformanceBlockWrite | base.ConformanceBlockSelectiveAccess | base.ConformanceBlockMultipleReferences,
+	}, nil
+}
+
 func NewSettingsWithLowAuthenticationLN(password string) (*DlmsSettings, error) {
 	return &DlmsSettings{
 		AuthenticationMechanismId: base.AuthenticationLow,
@@ -189,7 +198,7 @@ func NewSettingsWithLowAuthenticationLN(password string) (*DlmsSettings, error) 
 	}, nil
 }
 
-func NewSettingsNoAuthenticationLN() (*DlmsSettings, error) {
+func NewSettingsWithNoAuthenticationLN() (*DlmsSettings, error) {
 	return &DlmsSettings{
 		AuthenticationMechanismId: base.AuthenticationNone,
 		ApplicationContext:        base.ApplicationContextLNNoCiphering,
