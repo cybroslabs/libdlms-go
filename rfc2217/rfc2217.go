@@ -35,7 +35,8 @@ type rfc2217Serial struct {
 	isopen      bool
 	writebuffer []byte
 
-	settings base.SerialStreamSettings
+	settings     base.SerialStreamSettings
+	havesettings bool
 
 	// status variables
 	linestate  byte
@@ -96,21 +97,23 @@ func (r *rfc2217Serial) Open() error {
 	r.writebuffer = r.writeSignature(r.writebuffer)
 
 	// set desired settings
-	var cmd [4]byte
-	binary.BigEndian.PutUint32(cmd[:], uint32(r.settings.BaudRate))
-	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 1, cmd[:])
-	cmd[0] = byte(r.settings.DataBits)
-	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 2, cmd[:1])
-	cmd[0] = byte(r.settings.Parity)
-	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 3, cmd[:1])
-	cmd[0] = byte(r.settings.StopBits)
-	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 4, cmd[:1])
+	if r.havesettings {
+		var cmd [4]byte
+		binary.BigEndian.PutUint32(cmd[:], uint32(r.settings.BaudRate))
+		r.writebuffer = r.writeSubnegotiation(r.writebuffer, 1, cmd[:])
+		cmd[0] = byte(r.settings.DataBits)
+		r.writebuffer = r.writeSubnegotiation(r.writebuffer, 2, cmd[:1])
+		cmd[0] = byte(r.settings.Parity)
+		r.writebuffer = r.writeSubnegotiation(r.writebuffer, 3, cmd[:1])
+		cmd[0] = byte(r.settings.StopBits)
+		r.writebuffer = r.writeSubnegotiation(r.writebuffer, 4, cmd[:1])
 
-	cmd[0] = byte(r.settings.FlowControl)
-	r.writebuffer = r.writeSubnegotiation(r.writebuffer[:0], 5, cmd[:1])
-	if r.settings.FlowControl == base.SerialNoFlowControl { // set RTS to true by force
-		cmd[0] = 11
-		r.writebuffer = r.writeSubnegotiation(r.writebuffer, 5, cmd[:1])
+		cmd[0] = byte(r.settings.FlowControl)
+		r.writebuffer = r.writeSubnegotiation(r.writebuffer[:0], 5, cmd[:1])
+		if r.settings.FlowControl == base.SerialNoFlowControl { // set RTS to true by force
+			cmd[0] = 11
+			r.writebuffer = r.writeSubnegotiation(r.writebuffer, 5, cmd[:1])
+		}
 	}
 	r.isopen = true
 	return r.transport.Write(r.writebuffer)
@@ -514,10 +517,13 @@ func (r *rfc2217Serial) Write(src []byte) error {
 
 func New(t base.Stream, settings *base.SerialStreamSettings) base.SerialStream {
 	ret := &rfc2217Serial{
-		settings:    *settings,
 		transport:   t,
 		isopen:      false,
 		writebuffer: make([]byte, 0, 1024),
+	}
+	if settings != nil {
+		ret.havesettings = true
+		ret.settings = *settings // at least copy
 	}
 	return ret
 }
