@@ -5,7 +5,7 @@ go 1.25
 require (
 	github.com/cybroslabs/ouro-api-shared v0.0.0-20251006134820-b77048dd2c11
 	go.uber.org/zap v1.27.0
-	google.golang.org/grpc v1.75.1
+	google.golang.org/grpc v1.76.0
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
 )
 
