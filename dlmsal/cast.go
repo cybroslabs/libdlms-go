@@ -156,6 +156,20 @@ func recaststruct(trg reflect.Value, data *DlmsData) error {
 func recastslice(trg reflect.Value, data *DlmsData) error {
 	// somehow determine type of slice
 	switch v := data.Value.(type) {
+	case []bool:
+		switch trg.Type() {
+		case reflect.TypeOf([]bool{}):
+			if trg.IsNil() || trg.Cap() < len(v) {
+				trg.Set(reflect.MakeSlice(trg.Type(), len(v), len(v)))
+			} else {
+				trg.SetLen(len(v))
+			}
+			for ii, b := range v { // this has to be slow as fuck
+				trg.Index(ii).SetBool(b)
+			}
+		default:
+			return fmt.Errorf("invalid target type: %v", trg.Type())
+		}
 	case []byte:
 		switch trg.Type() {
 		case reflect.TypeOf([]byte{}):
