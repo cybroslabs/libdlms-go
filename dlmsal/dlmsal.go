@@ -143,6 +143,7 @@ type DlmsSettings struct { // damn too many settings
 	ServerAuthenticationMechanismId base.Authentication
 	UseGeneralGloDedCiphering       bool
 	ReturnedConformanceBlock        uint32 // this is returned conformance block, not the one we sent
+	ShowSecuredValues               bool   // force to show secured values in logs, dangerous, debug purpose only !!!
 
 	// private part
 	ctos              []byte
@@ -319,6 +320,9 @@ func (d *dlmsal) smallreadout() ([]byte, error) {
 }
 
 func (d *dlmsal) logstate(st bool) bool {
+	if d.settings.ShowSecuredValues {
+		return false
+	}
 	switch d.settings.AuthenticationMechanismId {
 	case base.AuthenticationLow:
 		if st {
