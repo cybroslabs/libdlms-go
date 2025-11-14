@@ -14,7 +14,6 @@ const (
 	maxBytesBefore7e = 100
 	maxLength        = 2050
 	maxPackets       = 20
-	maxBody          = 10000000
 	initpacketlength = 2000
 	maxRRframecycles = 10
 	maxEmptycycles   = 10

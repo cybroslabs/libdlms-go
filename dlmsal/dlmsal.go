@@ -359,7 +359,7 @@ func (d *dlmsal) Open() error { // login and shits
 	aare, err := d.smallreadout()
 	if err != nil {
 		d.logstate(true)
-		return fmt.Errorf("unable to receive snrm: %w", err)
+		return fmt.Errorf("unable to receive AARE: %w", err)
 	}
 	if d.logstate(true) {
 		d.logf(base.LogHex("AARE", aare))
