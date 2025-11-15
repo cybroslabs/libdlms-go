@@ -3,7 +3,7 @@ module github.com/cybroslabs/libdlms-go
 go 1.25
 
 require (
-	github.com/cybroslabs/ouro-api-shared v0.0.0-20251024105733-75c85cf1ba03
+	github.com/cybroslabs/ouro-api-shared v0.0.0-20251114211708-5d125029d8c6
 	go.uber.org/zap v1.27.0
 	google.golang.org/grpc v1.76.0
 	k8s.io/utils v0.0.0-20251002143259-bc988d571ff4
@@ -13,9 +13,9 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/rmg/iso4217 v1.0.1 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
-	golang.org/x/net v0.46.0 // indirect
-	golang.org/x/sys v0.37.0 // indirect
-	golang.org/x/text v0.30.0 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20251022142026-3a174f9686a8 // indirect
+	golang.org/x/net v0.47.0 // indirect
+	golang.org/x/sys v0.38.0 // indirect
+	golang.org/x/text v0.31.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251111163417-95abcf5c77ba // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 )
