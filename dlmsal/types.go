@@ -182,6 +182,34 @@ func NewDlmsDateTimeFromTime(src time.Time) DlmsDateTime {
 	}
 }
 
+type DlmsDateTimeOptions byte
+
+const (
+	DlmsDateTimeNoOption          DlmsDateTimeOptions = 0x00
+	DlmsDateTimeClearMilliseconds DlmsDateTimeOptions = 0x01
+	DlmsDateTimeSetDstBit         DlmsDateTimeOptions = 0x02
+)
+
+func NewDlmsDateTimeFromTime2(src time.Time, options DlmsDateTimeOptions, deviation int16) DlmsDateTime {
+	wd := byte(src.Weekday())
+	if wd == 0 {
+		wd = 7
+	}
+	ret := DlmsDateTime{
+		Date:      DlmsDate{Year: uint16(src.Year()), Month: byte(src.Month()), Day: byte(src.Day()), DayOfWeek: wd},
+		Time:      DlmsTime{Hour: byte(src.Hour()), Minute: byte(src.Minute()), Second: byte(src.Second()), Hundredths: byte(src.Nanosecond() / 10000000)},
+		Deviation: deviation,
+		Status:    0,
+	}
+	if options&DlmsDateTimeClearMilliseconds != 0 {
+		ret.Time.Hundredths = 0
+	}
+	if options&DlmsDateTimeSetDstBit != 0 {
+		ret.Status |= 0x80
+	}
+	return ret
+}
+
 func NewDlmsDateTimeFromSlice(src []byte) (val DlmsDateTime, err error) {
 	if len(src) < 12 {
 		err = fmt.Errorf("invalid length")
