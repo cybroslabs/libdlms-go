@@ -188,6 +188,7 @@ const (
 	DlmsDateTimeNoOption          DlmsDateTimeOptions = 0x00
 	DlmsDateTimeClearMilliseconds DlmsDateTimeOptions = 0x01
 	DlmsDateTimeSetDstBit         DlmsDateTimeOptions = 0x02
+	DlmsDateTimeSetInvalidStatus  DlmsDateTimeOptions = 0x04
 )
 
 func NewDlmsDateTimeFromTime2(src time.Time, options DlmsDateTimeOptions, deviation int16) DlmsDateTime {
@@ -206,6 +207,9 @@ func NewDlmsDateTimeFromTime2(src time.Time, options DlmsDateTimeOptions, deviat
 	}
 	if options&DlmsDateTimeSetDstBit != 0 {
 		ret.Status |= 0x80
+	}
+	if options&DlmsDateTimeSetInvalidStatus != 0 {
+		ret.Status = 0xff
 	}
 	return ret
 }
