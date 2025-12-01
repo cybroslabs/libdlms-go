@@ -264,6 +264,12 @@ func (w *dlmsal) logf(format string, v ...any) {
 	}
 }
 
+func (w *dlmsal) dlogf(format string, v ...any) {
+	if w.logger != nil {
+		w.logger.Debugf(format, v...)
+	}
+}
+
 func (d *dlmsal) Close() error {
 	if !d.transport.isopen {
 		return d.transport.Close() // a bit questionable
@@ -349,7 +355,7 @@ func (d *dlmsal) Open() error { // login and shits
 	}
 
 	if d.logstate(false) { // potencially not logging from all layer, not just that password, but nothing...
-		d.logf(base.LogHex("AARQ (sec values zeroed)", tl))
+		d.dlogf(base.LogHex("AARQ (sec values zeroed)", tl))
 	}
 	err = d.transport.Write(b)
 	if err != nil {
@@ -362,7 +368,7 @@ func (d *dlmsal) Open() error { // login and shits
 		return fmt.Errorf("unable to receive AARE: %w", err)
 	}
 	if d.logstate(true) {
-		d.logf(base.LogHex("AARE", aare))
+		d.dlogf(base.LogHex("AARE", aare))
 	}
 
 	// parse aare
