@@ -1,3 +1,17 @@
+// Package tcp provides a TCP/IP transport layer implementation for DLMS communication.
+//
+// This package implements a buffered TCP transport suitable for use with DLMS protocols.
+// It includes features such as:
+//   - Configurable connection timeouts
+//   - Deadline support for operations
+//   - Automatic reconnection handling
+//   - Transmit/receive byte counting
+//   - Maximum received bytes limiting
+//
+// Usage:
+//
+//	transport := tcp.New("192.168.1.100", 4059, 30*time.Second)
+//	err := transport.Open()
 package tcp
 
 import (
@@ -31,6 +45,7 @@ type tcp struct {
 	inerror         error
 }
 
+// New creates a new TCP transport stream for DLMS communication.
 func New(hostname string, port int, timeout time.Duration) base.Stream {
 	return &tcp{
 		hostname:        hostname,
@@ -112,7 +127,7 @@ func (t *tcp) SetLogger(logger *zap.SugaredLogger) {
 	t.logger = logger
 }
 
-func (t *tcp) setcommdeadline() { // yes, this is shit
+func (t *tcp) setcommdeadline() {
 	var zero time.Time
 	if t.deadline.IsZero() {
 		if t.timeout == 0 {
@@ -204,8 +219,9 @@ func (t *tcp) Read(p []byte) (int, error) {
 		}
 		return 0, t.inerror
 	}
-	t.inerror = io.EOF // this shouldnt happen anyway
-	return 0, io.EOF   // this is a bit questionable
+	// No data read and no error; treat as EOF
+	t.inerror = io.EOF
+	return 0, io.EOF
 }
 
 func (t *tcp) GetRxTxBytes() (int64, int64) {

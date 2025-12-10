@@ -194,7 +194,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 		return ret, nil
 	}
 
-	// ok, so fun with list damn it
+	// Handle set with list request
 	local := &al.pdu
 	local.Reset()
 	local.WriteByte(byte(base.TagSetRequest))

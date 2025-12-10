@@ -24,6 +24,8 @@ func codedlength(len uint) int {
 	return 5
 }
 
+// EncodeCaptureObject creates a DLMS data structure representing a capture object definition.
+// This is typically used for profile generic objects.
 func EncodeCaptureObject(classId uint16, obis DlmsObis, attribute int8, version uint16) DlmsData {
 	ch := make([]DlmsData, 4) // this bellow should be done using some function with type checking... poor maintainability
 	ch[0] = DlmsData{Tag: TagLongUnsigned, Value: classId}
@@ -33,6 +35,8 @@ func EncodeCaptureObject(classId uint16, obis DlmsObis, attribute int8, version 
 	return DlmsData{Tag: TagStructure, Value: ch}
 }
 
+// EncodeSimpleRangeAccess creates a selective access parameter for range-based profile generic queries.
+// The from and to parameters define the time range for the data retrieval.
 func EncodeSimpleRangeAccess(from *DlmsDateTime, to *DlmsDateTime) DlmsData {
 	ch := make([]DlmsData, 4)
 	ch[0] = EncodeCaptureObject(8, DlmsObis{A: 0, B: 0, C: 1, D: 0, E: 0, F: 255}, 2, 0)
@@ -250,6 +254,7 @@ var _units = [...]string{"unknown",
 	"dbµV",
 	"dB"}
 
+// GetUnit returns the string representation of a DLMS unit code.
 func GetUnit(u uint8) string {
 	if int(u) >= len(_units) {
 		return _units[0]

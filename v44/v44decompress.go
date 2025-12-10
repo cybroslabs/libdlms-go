@@ -86,7 +86,7 @@ func (v *v44decompress) decompress() ([]byte, error) {
 				v.c2++
 				v.c2n <<= 1
 				if v.c2 > 11 {
-					return nil, fmt.Errorf("c2 cant be more than 11")
+					return nil, fmt.Errorf("c2 can't be more than 11, got %d", v.c2)
 				}
 				v.stepup = false
 			}
@@ -207,7 +207,8 @@ func (v *v44decompress) processcodeword(prev int, ctr int16) error {
 			v.history = append(v.history, v.history[cn.pos+1-int32(cn.length):cn.pos+1]...)
 		}
 	case state_ordinal:
-		if ctr == v.lastcode { // damn that extra rule
+		// Special case when code equals lastcode
+		if ctr == v.lastcode {
 			cn.length = 2 // hacky hack
 			v.history = append(v.history, v.history[len(v.history)-1], v.history[len(v.history)-1])
 		} else {

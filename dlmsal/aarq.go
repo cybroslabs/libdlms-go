@@ -239,7 +239,7 @@ func (d *dlmsal) parseCalledAEInvocationID(tag aaretag) error {
 		return err
 	}
 
-	d.logf("parseCalledAEInvocationID, for now, not used much: %02x %02x", tag.tag, t)
+	d.dlogf("parseCalledAEInvocationID (currently unused): tag=%02x inner_tag=%02x", tag.tag, t)
 	return nil
 }
 
@@ -320,8 +320,10 @@ func (al *dlmsal) parseUserInformationtag(d []byte) (ir *initiateResponse, cse *
 
 func (al *dlmsal) decodeInitiateResponse(src []byte) (out initiateResponse, err error) {
 	if len(src) < 13 {
-		if len(src) == 12 && cap(src) > 12 { // some units can return this shit, underlying array should be big enough to accomodate additional byte
-			src = src[:13] // this hack wont work if 0xbe tag is not the last one, ok, usually is the last one
+		// Some devices return 12 bytes; workaround by using extra capacity if available
+		// Note: This only works when the 0xbe tag is the last tag in the response
+		if len(src) == 12 && cap(src) > 12 {
+			src = src[:13]
 		} else {
 			err = fmt.Errorf("invalid initial response length")
 			return

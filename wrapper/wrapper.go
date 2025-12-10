@@ -1,3 +1,18 @@
+// Package wrapper implements the DLMS Wrapper protocol for TCP/IP transport.
+//
+// The Wrapper protocol provides a simple framing mechanism for DLMS messages over TCP/IP,
+// as an alternative to HDLC. It's typically used with direct TCP connections to meters.
+//
+// The wrapper adds a 8-byte header containing:
+//   - Version (2 bytes): Always 0x0001
+//   - Source WPORT (2 bytes): Logical address of sender
+//   - Destination WPORT (2 bytes): Logical address of receiver
+//   - Length (2 bytes): Payload length
+//
+// Usage:
+//
+//	wrapperTransport, err := wrapper.New(tcpTransport, 1, 1)
+//	err = wrapperTransport.Open()
 package wrapper
 
 import (
@@ -26,6 +41,8 @@ func (w *wrapper) logf(format string, v ...any) {
 	}
 }
 
+// New creates a new DLMS wrapper protocol layer around the provided transport stream.
+// The source and destination are WPORT addresses used in the wrapper header.
 func New(transport base.Stream, source uint16, destination uint16) (base.Stream, error) {
 	return &wrapper{
 		transport:   transport,
@@ -48,7 +65,7 @@ func (w *wrapper) Disconnect() error {
 }
 
 func (w *wrapper) Open() error {
-	w.logf("try to open wrapper with source %d and destination %d", w.source, w.destination)
+	w.logf("Opening wrapper with source %d and destination %d", w.source, w.destination)
 	return w.transport.Open()
 }
 
@@ -74,7 +91,7 @@ func (w *wrapper) Write(src []byte) error {
 		return nil
 	}
 	if w.towrite+len(src) > 65535+8 {
-		return fmt.Errorf("packet too big")
+		return fmt.Errorf("packet too big: size=%d max=%d", w.towrite+len(src), 65535+8)
 	}
 	// readout remaining bytes?
 	for w.remaining > 0 {

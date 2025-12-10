@@ -1,3 +1,18 @@
+// Package ciphering provides encryption, authentication, and hashing for DLMS secure communication.
+//
+// This package implements security mechanisms defined in the DLMS/COSEM specifications:
+//   - AES-GCM encryption and authentication
+//   - ECDSA digital signatures
+//   - SHA-256, SHA-384, GMAC authentication
+//   - Frame counter management
+//   - Streaming encryption/decryption
+//
+// Supported authentication mechanisms:
+//   - High Level Security with GMAC (HLS-GMAC)
+//   - High Level Security with SHA-256 (HLS-SHA256)
+//   - High Level Security with ECDSA (HLS-ECDSA)
+//
+// The package supports both NIST P-256/P-384 curves for ECDSA and AES key sizes of 128, 192, and 256 bits.
 package ciphering
 
 import (
@@ -33,7 +48,8 @@ const (
 	DirectionServerToClient = 1
 )
 
-type Ciphering interface { // add length to the streamer interface? add systitle to constructor? not to copy it every damn time
+// Ciphering provides encryption, decryption, and authentication for DLMS communication.
+type Ciphering interface {
 	Setup(systemtitleS []byte, stoc []byte) error
 	Hash(sc byte, fc uint32) ([]byte, error)
 	Verify(sc byte, fc uint32, hash []byte) (bool, error)
@@ -115,7 +131,7 @@ func (s *CipheringSettings) Validate() error {
 		return fmt.Errorf("invalid authentication mechanism: %v", s.AuthenticationMechanismId)
 	case base.AuthenticationHigh:
 		return fmt.Errorf("high authentication not implemented, this is manufacturer specific mostly")
-	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa: // just panic nil reference anyway, dont if every damn usage of decrypt
+	case base.AuthenticationHighGmac, base.AuthenticationHighSha256, base.AuthenticationHighEcdsa:
 		if s.EncryptionKey == nil {
 			return fmt.Errorf("authentication mechanism %v requires encryption key", s.AuthenticationMechanismId)
 		}

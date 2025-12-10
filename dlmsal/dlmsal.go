@@ -1,3 +1,38 @@
+// Package dlmsal implements the DLMS/COSEM application layer protocol.
+//
+// This package provides a complete implementation of the DLMS (Device Language Message Specification)
+// and COSEM (Companion Specification for Energy Metering) application layer, which is used for
+// communication with smart meters and other energy management devices.
+//
+// The package supports:
+//   - Logical Name (LN) and Short Name (SN) referencing
+//   - Multiple authentication mechanisms (None, Low, High GMAC, SHA-256, ECDSA)
+//   - Data encryption using AES-GCM
+//   - Block transfer for large data
+//   - Profile generic objects for historical data
+//   - Selective access for range queries
+//
+// Basic usage:
+//
+//	// Create settings
+//	settings, _ := dlmsal.NewSettingsWithLowAuthenticationLN("password")
+//
+//	// Create transport (TCP, HDLC, or Wrapper)
+//	transport := tcp.New("192.168.1.100", 4059, 30*time.Second)
+//
+//	// Create DLMS client
+//	client := dlmsal.New(transport, settings)
+//
+//	// Open connection
+//	err := client.Open()
+//
+//	// Read data
+//	items := []dlmsal.DlmsLNRequestItem{{
+//		ClassId: 3,
+//		Obis: dlmsal.DlmsObis{A: 1, B: 0, C: 1, D: 8, E: 0, F: 255},
+//		Attribute: 2,
+//	}}
+//	data, err := client.Get(items)
 package dlmsal
 
 import (
@@ -124,7 +159,8 @@ type dlmsal struct {
 	decompbuffer []byte       // reusable decompression buffer
 }
 
-type DlmsSettings struct { // damn too many settings
+// DlmsSettings contains the configuration parameters for DLMS communication.
+type DlmsSettings struct {
 	ConformanceBlock                uint32
 	MaxPduRecvSize                  int
 	VAAddress                       int16
@@ -166,6 +202,7 @@ func (d *DlmsSettings) SetDedicatedKey(key []byte, g ciphering.Ciphering) {
 	}
 }
 
+// NewSettingsWithLowAuthenticationSN creates DLMS settings for Short Name (SN) referencing with low-level authentication.
 func NewSettingsWithLowAuthenticationSN(password string) (*DlmsSettings, error) {
 	return &DlmsSettings{
 		AuthenticationMechanismId: base.AuthenticationLow,
@@ -176,6 +213,7 @@ func NewSettingsWithLowAuthenticationSN(password string) (*DlmsSettings, error) 
 	}, nil
 }
 
+// NewSettingsWithNoAuthenticationSN creates DLMS settings for Short Name (SN) referencing without authentication.
 func NewSettingsWithNoAuthenticationSN() (*DlmsSettings, error) {
 	return &DlmsSettings{
 		AuthenticationMechanismId: base.AuthenticationNone,
@@ -185,6 +223,7 @@ func NewSettingsWithNoAuthenticationSN() (*DlmsSettings, error) {
 	}, nil
 }
 
+// NewSettingsWithLowAuthenticationLN creates DLMS settings for Logical Name (LN) referencing with low-level authentication.
 func NewSettingsWithLowAuthenticationLN(password string) (*DlmsSettings, error) {
 	return &DlmsSettings{
 		AuthenticationMechanismId: base.AuthenticationLow,
@@ -199,6 +238,7 @@ func NewSettingsWithLowAuthenticationLN(password string) (*DlmsSettings, error) 
 	}, nil
 }
 
+// NewSettingsWithNoAuthenticationLN creates DLMS settings for Logical Name (LN) referencing without authentication.
 func NewSettingsWithNoAuthenticationLN() (*DlmsSettings, error) {
 	return &DlmsSettings{
 		AuthenticationMechanismId: base.AuthenticationNone,
@@ -212,6 +252,9 @@ func NewSettingsWithNoAuthenticationLN() (*DlmsSettings, error) {
 	}, nil
 }
 
+// NewSettingsWithCipheringLN creates DLMS settings for Logical Name (LN) referencing with encryption and authentication.
+// The systemtitle must be 8 bytes. The ctoshash is the client-to-server authentication hash.
+// fc is the initial frame counter value.
 func NewSettingsWithCipheringLN(systemtitle []byte, g ciphering.Ciphering, ctoshash []byte, fc uint32, authmech base.Authentication) (*DlmsSettings, error) {
 	if len(systemtitle) != 8 {
 		return nil, fmt.Errorf("systemtitle has to be 8 bytes long")
@@ -239,6 +282,7 @@ func NewSettingsWithCipheringLN(systemtitle []byte, g ciphering.Ciphering, ctosh
 	return &ret, nil
 }
 
+// New creates a new DLMS application layer client with the specified transport and settings.
 func New(transport base.Stream, settings *DlmsSettings) DlmsClient {
 	settings.invokebyte = 0
 	if settings.HighPriority {
@@ -272,7 +316,8 @@ func (w *dlmsal) dlogf(format string, v ...any) {
 
 func (d *dlmsal) Close() error {
 	if !d.transport.isopen {
-		return d.transport.Close() // a bit questionable
+		// Transport already closed, delegate to lower layers
+		return d.transport.Close()
 	}
 	d.transport.isopen = false // close that preemtpively, not ideal...
 
@@ -286,8 +331,9 @@ func (d *dlmsal) Close() error {
 		_ = d.transport.Close() // close lower layers at all cost
 		return err
 	}
-	_, err = d.smallreadout() // yes, this is bullshit
-	if err != nil {           // just ignore data itself as simulator returns some weird shit (based on e650 maybe)
+	// Read RLRE response (some devices return non-standard responses)
+	_, err = d.smallreadout()
+	if err != nil {
 		_ = d.transport.Close() // close lower layers at all cost
 		return err
 	}
@@ -334,7 +380,7 @@ func (d *dlmsal) logstate(st bool) bool {
 		if st {
 			d.transport.SetLogger(d.logger)
 		} else {
-			d.logf("temporary stop logging due to packet with confidental content")
+			d.logf("Temporarily suppressing logs due to packet with confidential content")
 			d.transport.SetLogger(nil)
 		}
 		return true
@@ -354,7 +400,8 @@ func (d *dlmsal) Open() error { // login and shits
 		return err
 	}
 
-	if d.logstate(false) { // potencially not logging from all layer, not just that password, but nothing...
+	// Temporarily suppress logging for all layers when sending confidential data
+	if d.logstate(false) {
 		d.dlogf(base.LogHex("AARQ (sec values zeroed)", tl))
 	}
 	err = d.transport.Write(b)
@@ -437,7 +484,8 @@ func (d *dlmsal) Open() error { // login and shits
 			return err
 		}
 	}
-	if d.settings.dedcipher != nil { // a bit questionable, if there is already gcm, there should be also stoc and systemtitles
+	// Setup dedicated cipher if configured (requires StoC and system titles)
+	if d.settings.dedcipher != nil {
 		if mask != 3 {
 			return fmt.Errorf("dedicated gcm is apparently enabled, but no stoc or serversystemtitle found")
 		}
@@ -464,7 +512,8 @@ func (d *dlmsal) Open() error { // login and shits
 	d.maxPduSendSize = int(d.aareres.initiateResponse.serverMaxReceivePduSize)
 	d.logf("Max PDU size: %v, Vaa: %v", d.maxPduSendSize, d.aareres.initiateResponse.vAAddress)
 
-	d.settings.VAAddress = d.aareres.initiateResponse.vAAddress // returning from interface, a bit hacky yes
+	// Store VAAddress from the server's initiate response
+	d.settings.VAAddress = d.aareres.initiateResponse.vAAddress
 
 	d.transport.isopen = true
 	return nil

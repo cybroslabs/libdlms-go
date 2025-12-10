@@ -51,6 +51,7 @@ type DlmsData struct {
 	Value any
 }
 
+// NewDlmsDataError creates a DlmsData with an error result tag.
 func NewDlmsDataError(err base.DlmsResultTag) DlmsData {
 	return DlmsData{Tag: TagError, Value: NewDlmsError(err)}
 }
@@ -63,6 +64,7 @@ func (e *DlmsError) Error() string {
 	return fmt.Sprintf("dlms error: %s", e.Result)
 }
 
+// NewDlmsError creates a new DLMS error with the specified result tag.
 func NewDlmsError(result base.DlmsResultTag) error {
 	return &DlmsError{Result: result}
 }
@@ -73,6 +75,8 @@ type DlmsCompactArray struct {
 	value []DlmsData
 }
 
+// DecodeData decodes a DLMS data structure from the provided reader.
+// Returns the decoded data, the number of bytes consumed, and any error encountered.
 func DecodeData(src io.Reader) (data DlmsData, c int, err error) {
 	var tmp tmpbuffer
 	return decodeDataTag(src, &tmp)
@@ -443,6 +447,7 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 	return data, 0, fmt.Errorf("unknown tag %d", tag)
 }
 
+// EncodeData encodes a DLMS data structure into a byte slice.
 func EncodeData(d DlmsData) ([]byte, error) {
 	var out bytes.Buffer
 	err := encodeData(&out, &d)

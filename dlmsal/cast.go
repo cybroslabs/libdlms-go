@@ -6,6 +6,17 @@ import (
 	"time"
 )
 
+// Cast converts a DlmsData structure into a Go native type using reflection.
+// The target must be a non-nil pointer to the desired type.
+// Supported target types include:
+//   - Basic types: bool, int*, uint*, float*, string
+//   - Time types: time.Time, DlmsDateTime
+//   - DLMS types: DlmsObis, DlmsData, Value
+//   - Slices and structs containing the above types
+//
+// Example:
+//   var result int64
+//   err := Cast(&result, dlmsData)
 func Cast(trg any, data DlmsData) error {
 	r := reflect.ValueOf(trg)
 	if r.Kind() != reflect.Pointer || r.IsNil() {

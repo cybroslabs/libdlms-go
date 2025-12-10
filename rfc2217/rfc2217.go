@@ -91,9 +91,8 @@ func (r *rfc2217Serial) Open() error {
 	r.writebuffer = r.writeOption(r.writebuffer, COM_PORT_OPTION, WILL)
 	// do purge here?
 	r.writebuffer = r.writeSubnegotiation(r.writebuffer, 12, []byte{0x03}) // purge data
-	// is there really at least some answer? or handle negotiation during reading itself?
-	// but according to RFC855, binary is by default false, so at least some answer should be here, same for SGA, dont know how com port option... this is a bit weird
-	// also send some artifical signature
+	// According to RFC855, binary mode and SGA are false by default
+	// Send an artificial signature for identification
 	r.writebuffer = r.writeSignature(r.writebuffer)
 
 	// set desired settings
@@ -350,7 +349,7 @@ func (r *rfc2217Serial) Read(p []byte) (n int, err error) {
 	for len(p) > 0 {
 		nn, err = r.transport.Read(p[:1])
 		if err != nil {
-			return // yeah, eof and n together, damn
+			return // Return both n and error (may be EOF with partial data)
 		}
 		if nn == 0 {
 			return n, io.EOF

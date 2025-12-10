@@ -1,3 +1,24 @@
+// Package hdlc implements the HDLC (High-Level Data Link Control) protocol layer for DLMS communication.
+//
+// HDLC provides reliable, connection-oriented data link layer communication with features including:
+//   - Frame-based transmission with CRC error detection
+//   - Automatic retransmission on timeout or error
+//   - Flow control using RR (Receive Ready) frames
+//   - Segmentation for large packets
+//   - Negotiated maximum transmission and reception sizes
+//
+// This implementation follows the IEC 62056-46 specification for HDLC profiles used in energy metering.
+//
+// Usage:
+//
+//	settings := &hdlc.Settings{
+//		Logical:  1,
+//		Physical: 1,
+//		Client:   16,
+//		MaxRcv:   2048,
+//		MaxSnd:   2048,
+//	}
+//	hdlcTransport, err := hdlc.New(tcpTransport, settings)
 package hdlc
 
 import (
@@ -57,15 +78,17 @@ type Settings struct {
 	Retransmits     int
 }
 
+// New creates a new HDLC MAC layer wrapper around the provided transport stream.
+// The settings specify addressing and negotiation parameters.
 func New(transport base.Stream, settings *Settings) (base.Stream, error) {
 	if settings.Logical > 0x3fff {
-		return nil, fmt.Errorf("invalid logical address")
+		return nil, fmt.Errorf("invalid logical address: %d (max: 0x3fff)", settings.Logical)
 	}
 	if settings.Physical > 0x3fff {
-		return nil, fmt.Errorf("invalid physical address")
+		return nil, fmt.Errorf("invalid physical address: %d (max: 0x3fff)", settings.Physical)
 	}
 	if settings.Client > 0x7f {
-		return nil, fmt.Errorf("invalid client address")
+		return nil, fmt.Errorf("invalid client address: %d (max: 0x7f)", settings.Client)
 	}
 	if settings.MaxRcv > initpacketlength {
 		settings.MaxRcv = initpacketlength
@@ -102,7 +125,8 @@ func (w *maclayer) logf(format string, v ...any) {
 
 func (w *maclayer) Close() error {
 	if !w.isopen {
-		return w.transport.Close() // a bit questionable
+		// Transport already closed, delegate to lower layers
+		return w.transport.Close()
 	}
 	err := w.writeout()
 	if err != nil {
@@ -144,7 +168,8 @@ func (w *maclayer) Close() error {
 	if err != nil {
 		return fmt.Errorf("unable to create disconnect packet")
 	}
-	_, err = w.readpackets() // just ignoring whatever returns, damn retransmits even here? i guess no, in case of error, just raise some error and do reconnect after
+	// Read disconnect response (DISC/UA frame exchange)
+	_, err = w.readpackets()
 	if err != nil {
 		return err
 	}
@@ -201,7 +226,7 @@ func (w *maclayer) Open() error {
 		} else {
 			return err
 		}
-		err = w.retransmit() // screw write timeouts
+		err = w.retransmit() // Retransmit on timeout
 		if err != nil {
 			return err
 		}
@@ -462,12 +487,12 @@ func (w *maclayer) Write(src []byte) error {
 	if len(src) == 0 {
 		return nil
 	}
-	// readout pending things, use general Read till eof, no other way damn it, use rcvbuffer as only first 3 bytes are used, this is a bit hell
+	// Read out pending data from previous operations before writing new data
 	err := w.readout()
 	if err != nil {
 		return err
 	}
-	// fuck, as write is supposed to process everything, this has to be cycle
+	// Write all data by chunking into packets if needed
 	for len(src) > 0 {
 		l := len(src)
 		s := false
@@ -475,7 +500,7 @@ func (w *maclayer) Write(src []byte) error {
 			l = int(w.settings.MaxSnd) - w.writeoffset
 			s = true
 		}
-		copy(w.sendbuffer[11+w.writeoffset:], src[:l]) // a bit hardcore, 11 is important constant ;)
+		copy(w.sendbuffer[11+w.writeoffset:], src[:l]) // Offset 11 accounts for max header size
 		w.writeoffset += l
 		if s { // send partial packet with segment bit
 			err = w.writepacket(macpacket{control: w.nextcontrol(), segmented: true}, true)
@@ -848,7 +873,7 @@ func (w *maclayer) writepacket(packet macpacket, final bool) (err error) {
 		w.sendbuffer[6] = byte(w.settings.Physical<<1) | 1
 		pck = w.sendbuffer[:]
 	default:
-		return fmt.Errorf("invalid address length, programatic error")
+		return fmt.Errorf("invalid address length, programming error")
 	}
 
 	pck[0] = 0x7e

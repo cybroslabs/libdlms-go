@@ -108,7 +108,7 @@ func (n *Value) ToString() string {
 	case Boolean:
 		return fmt.Sprintf("%t", n.Value.(bool))
 	}
-	return "invalid" // questionable
+	return "invalid"
 }
 
 type DlmsDateTime struct {
@@ -168,6 +168,8 @@ func (t *DlmsDateTime) EncodeToDlms(dst *bytes.Buffer) {
 	dst.WriteByte(t.Status)
 }
 
+// NewDlmsDateTimeFromTime converts a Go time.Time to a DLMS DateTime structure.
+// The timezone offset is extracted from the source time.
 func NewDlmsDateTimeFromTime(src time.Time) DlmsDateTime {
 	wd := byte(src.Weekday())
 	if wd == 0 {
@@ -191,6 +193,8 @@ const (
 	DlmsDateTimeSetInvalidStatus  DlmsDateTimeOptions = 0x04
 )
 
+// NewDlmsDateTimeFromTime2 converts a Go time.Time to a DLMS DateTime with custom options and deviation.
+// Options can control milliseconds, DST bit, and status field settings.
 func NewDlmsDateTimeFromTime2(src time.Time, options DlmsDateTimeOptions, deviation int16) DlmsDateTime {
 	wd := byte(src.Weekday())
 	if wd == 0 {
@@ -214,6 +218,7 @@ func NewDlmsDateTimeFromTime2(src time.Time, options DlmsDateTimeOptions, deviat
 	return ret
 }
 
+// NewDlmsDateTimeFromSlice creates a DLMS DateTime from a 12-byte slice.
 func NewDlmsDateTimeFromSlice(src []byte) (val DlmsDateTime, err error) {
 	if len(src) < 12 {
 		err = fmt.Errorf("invalid length")
@@ -281,6 +286,7 @@ func (o DlmsObis) EqualTo(o2 DlmsObis) bool {
 	return o.A == o2.A && o.B == o2.B && o.C == o2.C && o.D == o2.D && o.E == o2.E && o.F == o2.F
 }
 
+// NewDlmsObisFromSlice creates a DLMS OBIS code from a 6-byte slice.
 func NewDlmsObisFromSlice(src []byte) (ob DlmsObis, err error) {
 	if len(src) < 6 {
 		err = fmt.Errorf("invalid length")
@@ -292,11 +298,13 @@ func NewDlmsObisFromSlice(src []byte) (ob DlmsObis, err error) {
 func mustatoi(s string) int {
 	i, err := strconv.Atoi(s)
 	if err != nil {
-		panic(err) // really shouldnt happen
+		// This should not happen as the regex already validated the format
+		panic(err)
 	}
 	return i
 }
 
+// NewDlmsObisFromString parses a DLMS OBIS code from a string (e.g., "1-0:1.8.0.255").
 func NewDlmsObisFromString(src string) (ob DlmsObis, err error) {
 	ob, _, err = NewDlmsObisFromStringComp(src)
 	return
@@ -305,6 +313,8 @@ func NewDlmsObisFromString(src string) (ob DlmsObis, err error) {
 var stdobisregex = regexp.MustCompile(`^((\d+)-(\d+):)?(\d+)\.(\d+)(\.(\d+)([\.*](\d+))?)?$`)
 var dotobisregex = regexp.MustCompile(`^(\d+)\.(\d+)\.(\d+)\.(\d+)\.(\d+)(\.(\d+))?$`)
 
+// NewDlmsObisFromStringComp parses a DLMS OBIS code from a string and returns which components are present.
+// The cmp return value is a bitmask indicating which OBIS fields (A-F) were specified.
 func NewDlmsObisFromStringComp(src string) (ob DlmsObis, cmp int, err error) {
 	var a, b, c, d, e, f int
 	cmp = ObisHasC | ObisHasD
