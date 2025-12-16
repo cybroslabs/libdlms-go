@@ -12,27 +12,27 @@ import (
 
 // ASPP (Async Server Protocol) Command Codes
 const (
-	ASPP_CMD_IOCTL         = 16
-	ASPP_CMD_FLOWCTRL      = 17
-	ASPP_CMD_LINECTRL      = 18
-	ASPP_CMD_LSTATUS       = 19
-	ASPP_CMD_FLUSH         = 20
-	ASPP_CMD_IQUEUE        = 21
-	ASPP_CMD_OQUEUE        = 22
-	ASPP_CMD_SETBAUD       = 23
-	ASPP_CMD_XONXOFF       = 24
-	ASPP_CMD_SETXON        = 25
-	ASPP_CMD_NOTIFY        = 38
-	ASPP_CMD_POLLING       = 39
-	ASPP_CMD_ALIVE         = 40
-	ASPP_CMD_START_BREAK   = 33
-	ASPP_CMD_STOP_BREAK    = 34
-	ASPP_CMD_START_NOTIFY  = 36
-	ASPP_CMD_STOP_NOTIFY   = 37
-	ASPP_CMD_HOST          = 43
-	ASPP_CMD_PORT_INIT     = 44
-	ASPP_CMD_WAIT_OQUEUE   = 47
-	ASPP_CMD_TX_FIFO       = 48
+	ASPP_CMD_IOCTL        = 16
+	ASPP_CMD_FLOWCTRL     = 17
+	ASPP_CMD_LINECTRL     = 18
+	ASPP_CMD_LSTATUS      = 19
+	ASPP_CMD_FLUSH        = 20
+	ASPP_CMD_IQUEUE       = 21
+	ASPP_CMD_OQUEUE       = 22
+	ASPP_CMD_SETBAUD      = 23
+	ASPP_CMD_XONXOFF      = 24
+	ASPP_CMD_SETXON       = 25
+	ASPP_CMD_NOTIFY       = 38
+	ASPP_CMD_POLLING      = 39
+	ASPP_CMD_ALIVE        = 40
+	ASPP_CMD_START_BREAK  = 33
+	ASPP_CMD_STOP_BREAK   = 34
+	ASPP_CMD_START_NOTIFY = 36
+	ASPP_CMD_STOP_NOTIFY  = 37
+	ASPP_CMD_HOST         = 43
+	ASPP_CMD_PORT_INIT    = 44
+	ASPP_CMD_WAIT_OQUEUE  = 47
+	ASPP_CMD_TX_FIFO      = 48
 
 	// Command Set Types
 	NPREAL_ASPP_COMMAND_SET  = 1
@@ -167,40 +167,19 @@ func (m *moxaRealCOMSerial) writeCommand(dst []byte, cmdSet byte, cmd byte, data
 	return dst
 }
 
-// processCommand handles incoming command packets from the server
-func (m *moxaRealCOMSerial) processCommand() error {
-	var header [4]byte
-	_, err := io.ReadFull(m.transport, header[:])
-	if err != nil {
-		return err
-	}
-
-	cmdSet := header[0]
-	cmd := header[1]
-	length := int(binary.BigEndian.Uint16(header[2:4]))
-
-	// Read command data if present
-	var data []byte
-	if length > 0 {
-		if length > 1024 {
-			return fmt.Errorf("command data too large: %d", length)
-		}
-		data = make([]byte, length)
-		_, err = io.ReadFull(m.transport, data)
-		if err != nil {
-			return err
-		}
-	}
-
-	// Process based on command set
-	switch cmdSet {
-	case NPREAL_ASPP_COMMAND_SET:
-		return m.handleASPPCommand(cmd, data)
-	case NPREAL_LOCAL_COMMAND_SET:
-		m.logf("received local command: %d", cmd)
-		return nil
+// isValidASPPCommand checks if a byte is a valid ASPP command code
+func isValidASPPCommand(cmd byte) bool {
+	switch cmd {
+	case ASPP_CMD_IOCTL, ASPP_CMD_FLOWCTRL, ASPP_CMD_LINECTRL,
+		ASPP_CMD_LSTATUS, ASPP_CMD_FLUSH, ASPP_CMD_IQUEUE,
+		ASPP_CMD_OQUEUE, ASPP_CMD_SETBAUD, ASPP_CMD_XONXOFF,
+		ASPP_CMD_SETXON, ASPP_CMD_NOTIFY, ASPP_CMD_POLLING,
+		ASPP_CMD_ALIVE, ASPP_CMD_START_BREAK, ASPP_CMD_STOP_BREAK,
+		ASPP_CMD_START_NOTIFY, ASPP_CMD_STOP_NOTIFY, ASPP_CMD_HOST,
+		ASPP_CMD_PORT_INIT, ASPP_CMD_WAIT_OQUEUE, ASPP_CMD_TX_FIFO:
+		return true
 	default:
-		return fmt.Errorf("unknown command set: %d", cmdSet)
+		return false
 	}
 }
 
@@ -230,6 +209,8 @@ func (m *moxaRealCOMSerial) handleASPPCommand(cmd byte, data []byte) error {
 }
 
 // Read implements SerialStream.
+// In Moxa Real COM mode, ASPP control commands and serial data are multiplexed on the same
+// TCP connection. This function filters out ASPP commands and returns only serial data.
 func (m *moxaRealCOMSerial) Read(p []byte) (n int, err error) {
 	if !m.isopen {
 		return 0, base.ErrNotOpened
@@ -238,66 +219,97 @@ func (m *moxaRealCOMSerial) Read(p []byte) (n int, err error) {
 		return 0, base.ErrNothingToRead
 	}
 
-	// Try to read data from transport
-	// In Moxa Real COM, control commands are interspersed with data
-	// We need to filter out commands and only return actual serial data
-	for n < len(p) {
-		// Peek at first byte to see if it's a command
-		var peek [1]byte
-		nn, err := m.transport.Read(peek[:])
-		if err != nil {
-			return n, err
-		}
-		if nn == 0 {
-			return n, io.EOF
-		}
-
-		// Check if this looks like a command header (command sets are 1 or 2)
-		if peek[0] == NPREAL_ASPP_COMMAND_SET || peek[0] == NPREAL_LOCAL_COMMAND_SET {
-			// Put it back and try to process as command
-			// We need to read the full command header to determine
-			var header [4]byte
-			header[0] = peek[0]
-			_, err = io.ReadFull(m.transport, header[1:])
-			if err != nil {
-				return n, err
-			}
-
-			cmdSet := header[0]
-			cmd := header[1]
-			length := int(binary.BigEndian.Uint16(header[2:4]))
-
-			// Read command data if present
-			var data []byte
-			if length > 0 {
-				if length > 1024 {
-					return n, fmt.Errorf("command data too large: %d", length)
-				}
-				data = make([]byte, length)
-				_, err = io.ReadFull(m.transport, data)
-				if err != nil {
-					return n, err
-				}
-			}
-
-			// Process the command
-			if cmdSet == NPREAL_ASPP_COMMAND_SET {
-				err = m.handleASPPCommand(cmd, data)
-				if err != nil {
-					return n, err
-				}
-			} else {
-				m.logf("received local command: %d during read", cmd)
-			}
-			continue
-		}
-
-		// It's data, copy it to output
-		p[n] = peek[0]
-		n++
+	// Return buffered data from previous reads if available
+	if len(m.readbuffer) > 0 {
+		n = copy(p, m.readbuffer)
+		m.readbuffer = m.readbuffer[n:]
+		return n, nil
 	}
 
-	return n, nil
+	// Read and process data from transport until we have serial data to return
+	for {
+		// Read a chunk from transport
+		tmpBuf := make([]byte, len(p))
+		nn, err := m.transport.Read(tmpBuf)
+		if err != nil {
+			return 0, err
+		}
+		if nn == 0 {
+			return 0, io.EOF
+		}
+		tmpBuf = tmpBuf[:nn]
+
+		// Scan through buffer, separating ASPP commands from serial data
+		i := 0
+		for i < len(tmpBuf) {
+			// Check if this looks like a command header (starts with 0x01 or 0x02)
+			if i+3 < len(tmpBuf) && m.isCommandHeader(tmpBuf[i:]) {
+				cmdSet := tmpBuf[i]
+				cmd := tmpBuf[i+1]
+				length := int(binary.BigEndian.Uint16(tmpBuf[i+2 : i+4]))
+				totalCmdLen := 4 + length
+
+				// Validate: is this a real command or just data that looks like one?
+				if m.validateCommand(cmdSet, cmd, length) && i+totalCmdLen <= len(tmpBuf) {
+					// Valid command with complete data - process it
+					var cmdData []byte
+					if length > 0 {
+						cmdData = tmpBuf[i+4 : i+totalCmdLen]
+					}
+					m.processCommand(cmdSet, cmd, cmdData)
+					i += totalCmdLen
+					continue
+				}
+			}
+
+			// Not a command (or incomplete command) - treat as serial data
+			m.readbuffer = append(m.readbuffer, tmpBuf[i])
+			i++
+		}
+
+		// Return any collected serial data
+		if len(m.readbuffer) > 0 {
+			n = copy(p, m.readbuffer)
+			m.readbuffer = m.readbuffer[n:]
+			return n, nil
+		}
+
+		// No serial data collected yet, continue reading
+	}
+}
+
+// isCommandHeader checks if the buffer starts with an ASPP or LOCAL command set byte
+func (m *moxaRealCOMSerial) isCommandHeader(buf []byte) bool {
+	return len(buf) >= 4 && (buf[0] == NPREAL_ASPP_COMMAND_SET || buf[0] == NPREAL_LOCAL_COMMAND_SET)
+}
+
+// validateCommand validates that a potential command header is a real ASPP/LOCAL command
+// by checking the command code and length are reasonable.
+func (m *moxaRealCOMSerial) validateCommand(cmdSet, cmd byte, length int) bool {
+	// Length must be reasonable (commands typically have small payloads)
+	if length < 0 || length > 256 {
+		return false
+	}
+
+	switch cmdSet {
+	case NPREAL_ASPP_COMMAND_SET:
+		return isValidASPPCommand(cmd)
+	case NPREAL_LOCAL_COMMAND_SET:
+		return cmd == LOCAL_CMD_TTY_USED || cmd == LOCAL_CMD_TTY_UNUSED
+	default:
+		return false
+	}
+}
+
+// processCommand processes a validated ASPP or LOCAL command
+func (m *moxaRealCOMSerial) processCommand(cmdSet, cmd byte, data []byte) {
+	if cmdSet == NPREAL_ASPP_COMMAND_SET {
+		if err := m.handleASPPCommand(cmd, data); err != nil {
+			m.logf("error processing ASPP command %d: %v", cmd, err)
+		}
+	} else {
+		m.logf("received local command: %d", cmd)
+	}
 }
 
 func (m *moxaRealCOMSerial) SetTimeout(t time.Duration) {
