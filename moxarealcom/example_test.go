@@ -32,7 +32,7 @@ func Example() {
 		fmt.Printf("Failed to open: %v\n", err)
 		return
 	}
-	defer serial.Disconnect()
+	defer func() { _ = serial.Disconnect() }()
 
 	// Set timeout for read operations
 	serial.SetTimeout(2 * time.Second)

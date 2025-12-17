@@ -147,7 +147,7 @@ func (m *moxaRealCOMSerial) Open() error {
 	m.writebuffer = m.writeCommand(m.writebuffer, NPREAL_ASPP_COMMAND_SET, ASPP_CMD_START_NOTIFY, nil)
 
 	if err := m.transport.Write(m.writebuffer); err != nil {
-		m.transport.Disconnect()
+		_ = m.transport.Disconnect()
 		return err
 	}
 
