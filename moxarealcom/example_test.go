@@ -11,9 +11,13 @@ import (
 
 // Example demonstrates how to use the Moxa Real COM driver
 func Example() {
-	// Create TCP transport to connect to Moxa NPort device
-	// Default Moxa Real COM uses ports 4001-4016 for data connections
-	tcpTransport := tcp.New("192.168.1.100", 4001, 5*time.Second)
+	// Moxa Real COM protocol uses TWO separate TCP connections:
+	// 1. Data stream - for serial data transmission
+	// 2. Command stream - for ASPP control commands
+	//
+	// Both connections typically use the same port on the Moxa device
+	dataStream := tcp.New("192.168.1.100", 950, 5*time.Second)
+	commandStream := tcp.New("192.168.1.100", 966, 5*time.Second)
 
 	// Configure serial settings
 	settings := &base.SerialStreamSettings{
@@ -24,8 +28,8 @@ func Example() {
 		FlowControl: base.SerialNoFlowControl,
 	}
 
-	// Create Moxa Real COM serial stream
-	serial := moxarealcom.New(tcpTransport, settings)
+	// Create Moxa Real COM serial stream with dual connections
+	serial := moxarealcom.New(dataStream, commandStream, settings)
 
 	// Open the connection
 	if err := serial.Open(); err != nil {

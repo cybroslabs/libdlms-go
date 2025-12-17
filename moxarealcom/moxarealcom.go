@@ -1,7 +1,6 @@
 package moxarealcom
 
 import (
-	"encoding/binary"
 	"fmt"
 	"io"
 	"time"
@@ -21,18 +20,21 @@ const (
 	ASPP_CMD_OQUEUE       = 22
 	ASPP_CMD_SETBAUD      = 23
 	ASPP_CMD_XONXOFF      = 24
-	ASPP_CMD_SETXON       = 25
-	ASPP_CMD_NOTIFY       = 38
-	ASPP_CMD_POLLING      = 39
-	ASPP_CMD_ALIVE        = 40
+	ASPP_CMD_PORT_RESET   = 32
 	ASPP_CMD_START_BREAK  = 33
 	ASPP_CMD_STOP_BREAK   = 34
 	ASPP_CMD_START_NOTIFY = 36
 	ASPP_CMD_STOP_NOTIFY  = 37
+	ASPP_CMD_NOTIFY       = 0x26 // 38 decimal
+	ASPP_CMD_POLLING      = 0x27 // 39 decimal
+	ASPP_CMD_ALIVE        = 0x28 // 40 decimal
 	ASPP_CMD_HOST         = 43
 	ASPP_CMD_PORT_INIT    = 44
+	ASPP_CMD_RESENT_TIME  = 46
 	ASPP_CMD_WAIT_OQUEUE  = 47
 	ASPP_CMD_TX_FIFO      = 48
+	ASPP_CMD_SETXON       = 51
+	ASPP_CMD_SETXOFF      = 52
 
 	// Command Set Types
 	NPREAL_ASPP_COMMAND_SET  = 1
@@ -51,15 +53,28 @@ const (
 	ASPP_FLOW_HW   = 1
 	ASPP_FLOW_SW   = 2
 
+	// Notification Flags (for ASPP_CMD_NOTIFY)
+	ASPP_NOTIFY_PARITY      = 0x01
+	ASPP_NOTIFY_FRAMING     = 0x02
+	ASPP_NOTIFY_HW_OVERRUN  = 0x04
+	ASPP_NOTIFY_SW_OVERRUN  = 0x08
+	ASPP_NOTIFY_BREAK       = 0x10
+	ASPP_NOTIFY_MSR_CHG     = 0x20
+
+	// Flush Buffer Types (for ASPP_CMD_FLUSH)
+	ASPP_FLUSH_RX  = 0
+	ASPP_FLUSH_TX  = 1
+	ASPP_FLUSH_ALL = 2
+
 	// Buffer sizes
 	writeChunk = 2048
 )
 
 type moxaRealCOMSerial struct {
-	transport   base.Stream // usually tcp
-	isopen      bool
-	writebuffer []byte
-	readbuffer  []byte
+	dataStream    base.Stream // TCP connection for serial data
+	commandStream base.Stream // TCP connection for ASPP commands
+	isopen        bool
+	writebuffer   []byte
 
 	settings     base.SerialStreamSettings
 	havesettings bool
@@ -69,12 +84,70 @@ type moxaRealCOMSerial struct {
 	modemstate byte
 
 	logger *zap.SugaredLogger
+
+	// command processing
+	stopCmdProcessor chan struct{}
+	cmdProcessorDone chan struct{}
 }
 
 func (m *moxaRealCOMSerial) logf(format string, v ...any) {
 	if m.logger != nil {
 		m.logger.Infof(format, v...)
 	}
+}
+
+// baudRateToIndex converts a baud rate value to its ASPP protocol index
+func baudRateToIndex(baud int) (byte, error) {
+	baudMap := map[int]byte{
+		300:    0,
+		600:    1,
+		1200:   2,
+		2400:   3,
+		4800:   4,
+		9600:   5,
+		19200:  6,
+		38400:  7,
+		57600:  8,
+		115200: 10,
+		230400: 11,
+		460800: 12,
+		921600: 13,
+		150:    14,
+		134:    15,
+		110:    16,
+		75:     17,
+		50:     18,
+	}
+	if idx, ok := baudMap[baud]; ok {
+		return idx, nil
+	}
+	return 0xff, fmt.Errorf("unsupported baud rate: %d", baud)
+}
+
+// packModeByte packs data bits, stop bits, and parity into a single mode byte
+// Bits 0-1: Data bits (0=5, 1=6, 2=7, 3=8)
+// Bit 2:    Stop bits (0=1 bit, 1=2 bits)
+// Bits 3-5: Parity (0=None, 1=Even, 2=Odd, 3=Mark, 4=Space)
+func packModeByte(dataBits base.SerialDataBits, stopBits base.SerialStopBits, parity base.SerialParity) byte {
+	mode := byte(0)
+	// Data bits: 5→0, 6→1, 7→2, 8→3
+	mode |= byte(dataBits - 5)
+	// Stop bits: 1→0, 2→4
+	if stopBits == base.SerialTwoStopBits {
+		mode |= 0x04
+	}
+	// Parity: None→0, Even→8, Odd→16, Mark→24, Space→32
+	switch parity {
+	case base.SerialEvenParity:
+		mode |= 0x08
+	case base.SerialOddParity:
+		mode |= 0x10
+	case base.SerialMarkParity:
+		mode |= 0x18
+	case base.SerialSpaceParity:
+		mode |= 0x20
+	}
+	return mode
 }
 
 // Close implements SerialStream.
@@ -85,17 +158,30 @@ func (m *moxaRealCOMSerial) Close() error {
 // Disconnect implements SerialStream.
 func (m *moxaRealCOMSerial) Disconnect() error {
 	if m.isopen {
+		// Stop command processor
+		close(m.stopCmdProcessor)
+		<-m.cmdProcessorDone
+
 		// Send TTY_UNUSED notification
 		m.writebuffer = m.writeCommand(m.writebuffer[:0], NPREAL_LOCAL_COMMAND_SET, LOCAL_CMD_TTY_UNUSED, nil)
-		_ = m.transport.Write(m.writebuffer) // ignore error on disconnect
+		_ = m.commandStream.Write(m.writebuffer) // ignore error on disconnect
 		m.isopen = false
 	}
-	return m.transport.Disconnect()
+	// Disconnect both streams
+	errCmd := m.commandStream.Disconnect()
+	errData := m.dataStream.Disconnect()
+	if errCmd != nil {
+		return errCmd
+	}
+	return errData
 }
 
 // GetRxTxBytes implements SerialStream.
 func (m *moxaRealCOMSerial) GetRxTxBytes() (int64, int64) {
-	return m.transport.GetRxTxBytes()
+	// Sum bytes from both streams
+	rxData, txData := m.dataStream.GetRxTxBytes()
+	rxCmd, txCmd := m.commandStream.GetRxTxBytes()
+	return rxData + rxCmd, txData + txCmd
 }
 
 // Open implements SerialStream.
@@ -113,41 +199,62 @@ func (m *moxaRealCOMSerial) Open() error {
 		}
 	}
 
-	if err := m.transport.Open(); err != nil {
+	// Open both streams
+	if err := m.commandStream.Open(); err != nil {
+		return err
+	}
+	if err := m.dataStream.Open(); err != nil {
+		_ = m.commandStream.Disconnect()
 		return err
 	}
 
 	m.logf("initializing moxa real com connection")
+
+	// Initialize command processor channels
+	m.stopCmdProcessor = make(chan struct{})
+	m.cmdProcessorDone = make(chan struct{})
+
+	// Start command processor goroutine
+	go m.commandProcessor()
 
 	// Send TTY_USED notification
 	m.writebuffer = m.writeCommand(m.writebuffer[:0], NPREAL_LOCAL_COMMAND_SET, LOCAL_CMD_TTY_USED, nil)
 
 	// Send PORT_INIT if we have settings
 	if m.havesettings {
-		// PORT_INIT command payload: baud(4) + databits(1) + stopbits(1) + parity(1)
-		initData := make([]byte, 7)
-		binary.BigEndian.PutUint32(initData[0:4], uint32(m.settings.BaudRate))
-		initData[4] = byte(m.settings.DataBits)
-		initData[5] = byte(m.settings.StopBits)
-		initData[6] = byte(m.settings.Parity)
-		m.writebuffer = m.writeCommand(m.writebuffer, NPREAL_ASPP_COMMAND_SET, ASPP_CMD_PORT_INIT, initData)
-
-		// Set flow control
-		flowData := []byte{byte(moxaFlowControl(m.settings.FlowControl))}
-		m.writebuffer = m.writeCommand(m.writebuffer, NPREAL_ASPP_COMMAND_SET, ASPP_CMD_FLOWCTRL, flowData)
-
-		// Set DTR and RTS high for no flow control
-		if m.settings.FlowControl == base.SerialNoFlowControl {
-			lineData := []byte{ASPP_MODEM_DTR | ASPP_MODEM_RTS}
-			m.writebuffer = m.writeCommand(m.writebuffer, NPREAL_ASPP_COMMAND_SET, ASPP_CMD_LINECTRL, lineData)
+		// PORT_INIT: [cmd][0x08][baud_idx][mode][dtr][rts][rts_flow][cts_flow][xon][xoff]
+		baudIdx, err := baudRateToIndex(m.settings.BaudRate)
+		if err != nil {
+			close(m.stopCmdProcessor)
+			<-m.cmdProcessorDone
+			_ = m.commandStream.Disconnect()
+			_ = m.dataStream.Disconnect()
+			return err
 		}
+		mode := packModeByte(m.settings.DataBits, m.settings.StopBits, m.settings.Parity)
+
+		// Flow control settings
+		var rtsFlow, ctsFlow, xon, xoff byte
+		switch m.settings.FlowControl {
+		case base.SerialHWFlowControl:
+			rtsFlow, ctsFlow = 1, 1
+		case base.SerialSWFlowControl:
+			xon, xoff = 1, 1
+		}
+
+		// DTR and RTS default to high (1)
+		initData := []byte{baudIdx, mode, 1, 1, rtsFlow, ctsFlow, xon, xoff}
+		m.writebuffer = m.writeCommand(m.writebuffer, NPREAL_ASPP_COMMAND_SET, ASPP_CMD_PORT_INIT, initData)
 	}
 
 	// Send START_NOTIFY to receive status updates
 	m.writebuffer = m.writeCommand(m.writebuffer, NPREAL_ASPP_COMMAND_SET, ASPP_CMD_START_NOTIFY, nil)
 
-	if err := m.transport.Write(m.writebuffer); err != nil {
-		_ = m.transport.Disconnect()
+	if err := m.commandStream.Write(m.writebuffer); err != nil {
+		close(m.stopCmdProcessor)
+		<-m.cmdProcessorDone
+		_ = m.commandStream.Disconnect()
+		_ = m.dataStream.Disconnect()
 		return err
 	}
 
@@ -156,31 +263,26 @@ func (m *moxaRealCOMSerial) Open() error {
 }
 
 // writeCommand creates a Moxa Real COM command packet
-// Format: [command_set(1)][command(1)][length(2,BE)][data...]
+// Format sent to device wire protocol:
+//   - LOCAL commands: [command_set(1)][command(1)] (2 bytes, no length/data)
+//   - ASPP commands:  [command(1)][length(1)][data...] (no command_set prefix)
 func (m *moxaRealCOMSerial) writeCommand(dst []byte, cmdSet byte, cmd byte, data []byte) []byte {
-	dst = append(dst, cmdSet, cmd)
 	dataLen := len(data)
-	dst = append(dst, byte(dataLen>>8), byte(dataLen))
-	if dataLen > 0 {
-		dst = append(dst, data...)
+	if dataLen > 255 {
+		panic(fmt.Sprintf("command data too large: %d bytes (max 255)", dataLen))
+	}
+
+	if cmdSet == NPREAL_LOCAL_COMMAND_SET {
+		// LOCAL commands: just [cmdSet][cmd], no length or data
+		dst = append(dst, cmdSet, cmd)
+	} else {
+		// ASPP commands: [cmd][length][data] - NO cmdSet prefix on wire
+		dst = append(dst, cmd, byte(dataLen))
+		if dataLen > 0 {
+			dst = append(dst, data...)
+		}
 	}
 	return dst
-}
-
-// isValidASPPCommand checks if a byte is a valid ASPP command code
-func isValidASPPCommand(cmd byte) bool {
-	switch cmd {
-	case ASPP_CMD_IOCTL, ASPP_CMD_FLOWCTRL, ASPP_CMD_LINECTRL,
-		ASPP_CMD_LSTATUS, ASPP_CMD_FLUSH, ASPP_CMD_IQUEUE,
-		ASPP_CMD_OQUEUE, ASPP_CMD_SETBAUD, ASPP_CMD_XONXOFF,
-		ASPP_CMD_SETXON, ASPP_CMD_NOTIFY, ASPP_CMD_POLLING,
-		ASPP_CMD_ALIVE, ASPP_CMD_START_BREAK, ASPP_CMD_STOP_BREAK,
-		ASPP_CMD_START_NOTIFY, ASPP_CMD_STOP_NOTIFY, ASPP_CMD_HOST,
-		ASPP_CMD_PORT_INIT, ASPP_CMD_WAIT_OQUEUE, ASPP_CMD_TX_FIFO:
-		return true
-	default:
-		return false
-	}
 }
 
 // handleASPPCommand processes ASPP protocol commands
@@ -197,9 +299,14 @@ func (m *moxaRealCOMSerial) handleASPPCommand(cmd byte, data []byte) error {
 			m.logf("line state: %02x", m.linestate)
 		}
 	case ASPP_CMD_POLLING:
-		// Respond with ALIVE
-		m.writebuffer = m.writeCommand(m.writebuffer[:0], NPREAL_ASPP_COMMAND_SET, ASPP_CMD_ALIVE, nil)
-		return m.transport.Write(m.writebuffer)
+		// Respond with ALIVE, echoing the sequence ID from the POLLING command
+		// POLLING format: [cmd][length][sequence_id]
+		// ALIVE format: [cmd][0x01][sequence_id]
+		if len(data) >= 2 {
+			sequenceID := data[1]
+			m.writebuffer = m.writeCommand(m.writebuffer[:0], NPREAL_ASPP_COMMAND_SET, ASPP_CMD_ALIVE, []byte{sequenceID})
+			return m.commandStream.Write(m.writebuffer)
+		}
 	case ASPP_CMD_ALIVE:
 		m.logf("received alive response")
 	default:
@@ -208,9 +315,100 @@ func (m *moxaRealCOMSerial) handleASPPCommand(cmd byte, data []byte) error {
 	return nil
 }
 
+// getCommandLength returns the expected packet length for a given command
+// Based on modbus-gate aspp.c and npreal2d.c implementations
+func getCommandLength(cmd byte) int {
+	switch cmd {
+	// 3-byte commands: [cmd][0x01][data]
+	case ASPP_CMD_FLOWCTRL, ASPP_CMD_IOCTL, ASPP_CMD_SETBAUD, ASPP_CMD_LINECTRL,
+		ASPP_CMD_START_BREAK, ASPP_CMD_STOP_BREAK, ASPP_CMD_START_NOTIFY, ASPP_CMD_STOP_NOTIFY,
+		ASPP_CMD_FLUSH, ASPP_CMD_HOST, ASPP_CMD_TX_FIFO, ASPP_CMD_XONXOFF,
+		ASPP_CMD_SETXON, ASPP_CMD_SETXOFF, ASPP_CMD_POLLING, ASPP_CMD_ALIVE:
+		return 3
+	// 4-byte commands: [cmd][0x02][data1][data2]
+	case ASPP_CMD_NOTIFY, ASPP_CMD_WAIT_OQUEUE, ASPP_CMD_OQUEUE, ASPP_CMD_IQUEUE:
+		return 4
+	// 5-byte commands: [cmd][0x03][data1][data2][data3]
+	case ASPP_CMD_LSTATUS:
+		return 5
+	// 10-byte command: [cmd][0x08][8 data bytes]
+	case ASPP_CMD_PORT_INIT:
+		return 10
+	default:
+		// Unknown command, consume 1 byte and skip
+		return 1
+	}
+}
+
+// commandProcessor runs in a background goroutine to process commands from the command stream
+// Device sends: [Cmd][Data...] with implicit length based on command type
+func (m *moxaRealCOMSerial) commandProcessor() {
+	defer close(m.cmdProcessorDone)
+
+	buffer := make([]byte, 1024)
+	bufferLen := 0
+
+	for {
+		select {
+		case <-m.stopCmdProcessor:
+			return
+		default:
+		}
+
+		// Set short timeout for responsive shutdown
+		m.commandStream.SetTimeout(100 * time.Millisecond)
+
+		n, err := m.commandStream.Read(buffer[bufferLen:])
+		if err != nil {
+			if err == io.EOF {
+				return
+			}
+			// Timeout or temporary error, continue
+			continue
+		}
+
+		bufferLen += n
+
+		// Process all complete commands in buffer
+		offset := 0
+		for offset < bufferLen {
+			if bufferLen-offset < 1 {
+				break
+			}
+
+			cmd := buffer[offset]
+			packetLen := getCommandLength(cmd)
+
+			if bufferLen-offset < packetLen {
+				// Incomplete packet, wait for more data
+				break
+			}
+
+			// Extract command data (everything except the command byte)
+			var cmdData []byte
+			if packetLen > 1 {
+				cmdData = buffer[offset+1 : offset+packetLen]
+			}
+
+			// Process the command
+			if err := m.handleASPPCommand(cmd, cmdData); err != nil {
+				m.logf("error processing ASPP command %d: %v", cmd, err)
+			}
+
+			offset += packetLen
+		}
+
+		// Shift remaining data to beginning of buffer
+		if offset > 0 {
+			copy(buffer, buffer[offset:bufferLen])
+			bufferLen -= offset
+		}
+	}
+}
+
 // Read implements SerialStream.
-// In Moxa Real COM mode, ASPP control commands and serial data are multiplexed on the same
-// TCP connection. This function filters out ASPP commands and returns only serial data.
+// With dual-stream architecture, this reads pure serial data from the data stream.
+// Commands are handled separately by the command processor goroutine.
 func (m *moxaRealCOMSerial) Read(p []byte) (n int, err error) {
 	if !m.isopen {
 		return 0, base.ErrNotOpened
@@ -219,117 +417,32 @@ func (m *moxaRealCOMSerial) Read(p []byte) (n int, err error) {
 		return 0, base.ErrNothingToRead
 	}
 
-	// Return buffered data from previous reads if available
-	if len(m.readbuffer) > 0 {
-		n = copy(p, m.readbuffer)
-		m.readbuffer = m.readbuffer[n:]
-		return n, nil
-	}
-
-	// Read and process data from transport until we have serial data to return
-	for {
-		// Read a chunk from transport
-		tmpBuf := make([]byte, len(p))
-		nn, err := m.transport.Read(tmpBuf)
-		if err != nil {
-			return 0, err
-		}
-		if nn == 0 {
-			return 0, io.EOF
-		}
-		tmpBuf = tmpBuf[:nn]
-
-		// Scan through buffer, separating ASPP commands from serial data
-		i := 0
-		for i < len(tmpBuf) {
-			// Check if this looks like a command header (starts with 0x01 or 0x02)
-			if i+3 < len(tmpBuf) && m.isCommandHeader(tmpBuf[i:]) {
-				cmdSet := tmpBuf[i]
-				cmd := tmpBuf[i+1]
-				length := int(binary.BigEndian.Uint16(tmpBuf[i+2 : i+4]))
-				totalCmdLen := 4 + length
-
-				// Validate: is this a real command or just data that looks like one?
-				if m.validateCommand(cmdSet, cmd, length) && i+totalCmdLen <= len(tmpBuf) {
-					// Valid command with complete data - process it
-					var cmdData []byte
-					if length > 0 {
-						cmdData = tmpBuf[i+4 : i+totalCmdLen]
-					}
-					m.processCommand(cmdSet, cmd, cmdData)
-					i += totalCmdLen
-					continue
-				}
-			}
-
-			// Not a command (or incomplete command) - treat as serial data
-			m.readbuffer = append(m.readbuffer, tmpBuf[i])
-			i++
-		}
-
-		// Return any collected serial data
-		if len(m.readbuffer) > 0 {
-			n = copy(p, m.readbuffer)
-			m.readbuffer = m.readbuffer[n:]
-			return n, nil
-		}
-
-		// No serial data collected yet, continue reading
-	}
-}
-
-// isCommandHeader checks if the buffer starts with an ASPP or LOCAL command set byte
-func (m *moxaRealCOMSerial) isCommandHeader(buf []byte) bool {
-	return len(buf) >= 4 && (buf[0] == NPREAL_ASPP_COMMAND_SET || buf[0] == NPREAL_LOCAL_COMMAND_SET)
-}
-
-// validateCommand validates that a potential command header is a real ASPP/LOCAL command
-// by checking the command code and length are reasonable.
-func (m *moxaRealCOMSerial) validateCommand(cmdSet, cmd byte, length int) bool {
-	// Length must be reasonable (commands typically have small payloads)
-	if length < 0 || length > 256 {
-		return false
-	}
-
-	switch cmdSet {
-	case NPREAL_ASPP_COMMAND_SET:
-		return isValidASPPCommand(cmd)
-	case NPREAL_LOCAL_COMMAND_SET:
-		return cmd == LOCAL_CMD_TTY_USED || cmd == LOCAL_CMD_TTY_UNUSED
-	default:
-		return false
-	}
-}
-
-// processCommand processes a validated ASPP or LOCAL command
-func (m *moxaRealCOMSerial) processCommand(cmdSet, cmd byte, data []byte) {
-	if cmdSet == NPREAL_ASPP_COMMAND_SET {
-		if err := m.handleASPPCommand(cmd, data); err != nil {
-			m.logf("error processing ASPP command %d: %v", cmd, err)
-		}
-	} else {
-		m.logf("received local command: %d", cmd)
-	}
+	// Read directly from data stream - no command filtering needed
+	return m.dataStream.Read(p)
 }
 
 func (m *moxaRealCOMSerial) SetTimeout(t time.Duration) {
-	m.transport.SetTimeout(t)
+	m.dataStream.SetTimeout(t)
+	// Don't set timeout on command stream as it has its own internal timeout
 }
 
 // SetDeadline implements SerialStream.
 func (m *moxaRealCOMSerial) SetDeadline(t time.Time) {
-	m.transport.SetDeadline(t)
+	m.dataStream.SetDeadline(t)
+	// Don't set deadline on command stream
 }
 
 // SetLogger implements SerialStream.
 func (m *moxaRealCOMSerial) SetLogger(logger *zap.SugaredLogger) {
 	m.logger = logger
-	m.transport.SetLogger(logger)
+	m.dataStream.SetLogger(logger)
+	m.commandStream.SetLogger(logger)
 }
 
 // SetMaxReceivedBytes implements SerialStream.
 func (m *moxaRealCOMSerial) SetMaxReceivedBytes(max int64) {
-	m.transport.SetMaxReceivedBytes(max)
+	m.dataStream.SetMaxReceivedBytes(max)
+	m.commandStream.SetMaxReceivedBytes(max)
 }
 
 func (m *moxaRealCOMSerial) SetDTR(dtr bool) error {
@@ -345,7 +458,7 @@ func (m *moxaRealCOMSerial) SetDTR(dtr bool) error {
 	lineCtrl |= ASPP_MODEM_RTS
 
 	m.writebuffer = m.writeCommand(m.writebuffer[:0], NPREAL_ASPP_COMMAND_SET, ASPP_CMD_LINECTRL, []byte{lineCtrl})
-	return m.transport.Write(m.writebuffer)
+	return m.commandStream.Write(m.writebuffer)
 }
 
 // SetFlowControl implements SerialStream.
@@ -369,7 +482,7 @@ func (m *moxaRealCOMSerial) SetFlowControl(flowControl base.SerialFlowControl) e
 		m.writebuffer = m.writeCommand(m.writebuffer, NPREAL_ASPP_COMMAND_SET, ASPP_CMD_LINECTRL, lineData)
 	}
 
-	return m.transport.Write(m.writebuffer)
+	return m.commandStream.Write(m.writebuffer)
 }
 
 // moxaFlowControl converts base flow control to Moxa ASPP flow control
@@ -423,6 +536,8 @@ func sanitySpeed(baudRate int, dataBits base.SerialDataBits, parity base.SerialP
 }
 
 // SetSpeed implements SerialStream.
+// Note: Dynamically changing serial parameters after PORT_INIT requires sending
+// a new PORT_INIT command with all parameters, not just SETBAUD.
 func (m *moxaRealCOMSerial) SetSpeed(baudRate int, dataBits base.SerialDataBits, parity base.SerialParity, stopBits base.SerialStopBits) error {
 	if !m.isopen {
 		return base.ErrNotOpened
@@ -437,18 +552,26 @@ func (m *moxaRealCOMSerial) SetSpeed(baudRate int, dataBits base.SerialDataBits,
 	m.settings.Parity = parity
 	m.settings.StopBits = stopBits
 
-	// Send SETBAUD command
-	baudData := make([]byte, 4)
-	binary.BigEndian.PutUint32(baudData, uint32(baudRate))
-	m.writebuffer = m.writeCommand(m.writebuffer[:0], NPREAL_ASPP_COMMAND_SET, ASPP_CMD_SETBAUD, baudData)
+	// Send complete PORT_INIT with new parameters
+	baudIdx, err := baudRateToIndex(baudRate)
+	if err != nil {
+		return err
+	}
+	mode := packModeByte(dataBits, stopBits, parity)
 
-	// Send LINECTRL for data bits, parity, stop bits
-	// Note: The actual encoding may vary by device - this is a simplified version
-	// In practice, these might be combined into PORT_INIT or separate commands
-	lineCtrlData := []byte{byte(dataBits), byte(parity), byte(stopBits)}
-	m.writebuffer = m.writeCommand(m.writebuffer, NPREAL_ASPP_COMMAND_SET, ASPP_CMD_LINECTRL, lineCtrlData)
+	// Preserve current flow control settings
+	var rtsFlow, ctsFlow, xon, xoff byte
+	switch m.settings.FlowControl {
+	case base.SerialHWFlowControl:
+		rtsFlow, ctsFlow = 1, 1
+	case base.SerialSWFlowControl:
+		xon, xoff = 1, 1
+	}
 
-	return m.transport.Write(m.writebuffer)
+	initData := []byte{baudIdx, mode, 1, 1, rtsFlow, ctsFlow, xon, xoff}
+	m.writebuffer = m.writeCommand(m.writebuffer[:0], NPREAL_ASPP_COMMAND_SET, ASPP_CMD_PORT_INIT, initData)
+
+	return m.commandStream.Write(m.writebuffer)
 }
 
 // Write implements SerialStream.
@@ -460,7 +583,7 @@ func (m *moxaRealCOMSerial) Write(src []byte) error {
 		return nil
 	}
 
-	// Moxa Real COM sends raw data without escaping
+	// Moxa Real COM sends raw data without escaping on the data stream
 	// However, we should chunk large writes to avoid buffer issues
 	for len(src) > 0 {
 		chunk := src
@@ -468,7 +591,7 @@ func (m *moxaRealCOMSerial) Write(src []byte) error {
 			chunk = src[:writeChunk]
 		}
 
-		if err := m.transport.Write(chunk); err != nil {
+		if err := m.dataStream.Write(chunk); err != nil {
 			return err
 		}
 
@@ -478,13 +601,22 @@ func (m *moxaRealCOMSerial) Write(src []byte) error {
 	return nil
 }
 
-// New creates a new Moxa Real COM serial stream
-func New(t base.Stream, settings *base.SerialStreamSettings) base.SerialStream {
+// New creates a new Moxa Real COM serial stream with dual TCP connections.
+// The Moxa Real COM protocol uses two separate TCP connections:
+//   - dataStream: Pure serial data transmission (no commands)
+//   - commandStream: ASPP control commands only
+//
+// Typically, Moxa NPort devices use sequential ports:
+//   - Port N (e.g., 950): Data connection
+//   - Port N (e.g., 966): Command connection (same port, separate connection)
+//
+// Some devices may use different port numbers - consult your device documentation.
+func New(dataStream base.Stream, commandStream base.Stream, settings *base.SerialStreamSettings) base.SerialStream {
 	ret := &moxaRealCOMSerial{
-		transport:   t,
-		isopen:      false,
-		writebuffer: make([]byte, 0, 1024),
-		readbuffer:  make([]byte, 0, 1024),
+		dataStream:    dataStream,
+		commandStream: commandStream,
+		isopen:        false,
+		writebuffer:   make([]byte, 0, 1024),
 	}
 	if settings != nil {
 		ret.havesettings = true

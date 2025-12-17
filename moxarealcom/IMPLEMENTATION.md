@@ -2,241 +2,264 @@
 
 ## Implementation Based On
 
-This implementation was created by studying:
+This implementation is based on the official **Moxa NPort Real TTY Linux driver** architecture:
+- Source: https://github.com/Moxa-Linux/moxa-nport-real-tty-utils
+- Uses dual TCP connections (data + command streams)
+- Matches the official driver's socket architecture
 
-1. **RFC2217 implementation** in `rfc2217/rfc2217.go` - Used as architectural template
-2. **Moxa NPort Real TTY Linux driver** - Source: https://github.com/Moxa-Linux/moxa-nport-real-tty-utils
-3. **Direct Serial implementation** in `directserial/directserial.go` - Used for interface pattern
+## Protocol Architecture
 
-## Key Differences from RFC2217
+### Command Packet Format
 
-### Protocol Format
-
-**RFC2217 (Telnet-based):**
+**Sent TO Device:**
 ```
-IAC SB COM_PORT_OPTION <command> <data> IAC SE
+LOCAL: [CommandSet][Command]
+ASPP:  [Command][Length][Data...]
 ```
-- Uses Telnet IAC (0xFF) byte escaping
-- Commands wrapped in Telnet subnegotiation sequences
-- Text-oriented protocol with option negotiation
-- Command: 1 byte, Data: variable with IAC escaping
 
-**Moxa Real COM (ASPP):**
+**Received FROM Device:**
 ```
-[Command Set][Command][Length MSB][Length LSB][Data...]
+[Command][Data...]  (implicit length based on command type)
 ```
-- Binary protocol with fixed 4-byte header
-- No byte escaping required
-- Command Set: 1 byte (ASPP=1, LOCAL=2)
-- Command: 1 byte
-- Length: 2 bytes big-endian
-- Data: raw binary, length specified in header
+
+- **Command Set**: 1 byte (LOCAL=0x02) - only for LOCAL commands
+- **Command**: 1 byte (command code)
+- **Length**: 1 byte (data length) - only in sent ASPP commands
+- **Data**: raw binary data
 
 ### Connection Handshake
 
-**RFC2217:**
-1. Negotiate Telnet BINARY mode
-2. Negotiate Telnet SGA (Suppress Go Ahead)
-3. Negotiate COM_PORT_OPTION (44)
-4. Send signature for identification
-5. Configure serial parameters via subnegotiation
-6. Begin data transfer
-
-**Moxa Real COM:**
-1. Send LOCAL_CMD_TTY_USED notification
-2. Send ASPP_CMD_PORT_INIT with full serial configuration
-3. Send ASPP_CMD_FLOWCTRL for flow control
-4. Send ASPP_CMD_LINECTRL for DTR/RTS state
-5. Send ASPP_CMD_START_NOTIFY to enable status updates
-6. Begin data transfer
+1. Open both TCP connections (data and command streams)
+2. Send `LOCAL_CMD_TTY_USED` notification on command stream
+3. Send `ASPP_CMD_PORT_INIT` with serial configuration
+4. Send `ASPP_CMD_FLOWCTRL` for flow control settings
+5. Send `ASPP_CMD_LINECTRL` for DTR/RTS state
+6. Send `ASPP_CMD_START_NOTIFY` to enable status updates
+7. Begin data transmission
 
 ### Data Transmission
 
-**RFC2217:**
-- All IAC bytes (0xFF) must be doubled (escaped as 0xFF 0xFF)
-- Commands interspersed with data using IAC sequences
-- Read operation must parse and filter Telnet commands
+- **Data Stream**: Raw serial data without any escaping or framing
+- **Command Stream**: ASPP commands processed by background goroutine
+- **Binary Safe**: All byte values (0x00-0xFF) valid in data stream
+- **No Multiplexing**: Commands and data never mixed
 
-**Moxa Real COM:**
-- Raw data transmission without escaping
-- Commands have distinct header (command set 1 or 2)
-- Read operation detects command headers and processes separately
-- More efficient for binary data
+### Key ASPP Commands
 
-### Command Comparison
+| Function | Command | Code | Packet Length (RX) |
+|----------|---------|------|-------------------|
+| Port Initialization | ASPP_CMD_PORT_INIT | 44 | 5 bytes |
+| Set Baud Rate | ASPP_CMD_SETBAUD | 23 | 3 bytes |
+| Flow Control | ASPP_CMD_FLOWCTRL | 17 | 3 bytes |
+| Line Control (DTR/RTS) | ASPP_CMD_LINECTRL | 18 | - |
+| Flush Buffers | ASPP_CMD_FLUSH | 20 | - |
+| Line Status | ASPP_CMD_LSTATUS | 19 | 5 bytes |
+| Modem State | ASPP_CMD_NOTIFY | 38 (0x26) | 4 bytes |
+| Keep-Alive Poll | ASPP_CMD_POLLING | 39 (0x27) | 3 bytes |
+| Keep-Alive Response | ASPP_CMD_ALIVE | 40 (0x28) | 3 bytes |
 
-| Function | RFC2217 Command | Moxa ASPP Command |
-|----------|----------------|-------------------|
-| Set Baud Rate | SB 44 1 [4 bytes] SE | ASPP_CMD_SETBAUD (23) |
-| Set Data Size | SB 44 2 [1 byte] SE | ASPP_CMD_PORT_INIT (44) |
-| Set Parity | SB 44 3 [1 byte] SE | ASPP_CMD_PORT_INIT (44) |
-| Set Stop Size | SB 44 4 [1 byte] SE | ASPP_CMD_PORT_INIT (44) |
-| Set Flow Control | SB 44 5 [1 byte] SE | ASPP_CMD_FLOWCTRL (17) |
-| Set DTR | SB 44 8/9 SE | ASPP_CMD_LINECTRL (18) |
-| Set RTS | SB 44 11/12 SE | ASPP_CMD_LINECTRL (18) |
-| Purge Data | SB 44 12 [1 byte] SE | ASPP_CMD_FLUSH (20) |
-| Line State | SB 44 106 [1 byte] SE | ASPP_CMD_LSTATUS (19) |
-| Modem State | SB 44 107 [1 byte] SE | ASPP_CMD_NOTIFY (0x26) |
-
-## Implementation Patterns Shared with RFC2217
-
-Both implementations follow the same structural patterns:
+## Implementation Structure
 
 ```go
-type serialStruct struct {
-    transport   base.Stream      // TCP transport layer
-    isopen      bool             // Connection state
-    writebuffer []byte           // Reusable write buffer
-    settings    SerialStreamSettings
-    havesettings bool
-    linestate   byte             // Line status
-    modemstate  byte             // Modem status
-    logger      *zap.SugaredLogger
+type moxaRealCOMSerial struct {
+    dataStream    base.Stream      // TCP data connection
+    commandStream base.Stream      // TCP command connection
+    isopen        bool             // Connection state
+    writebuffer   []byte           // Reusable write buffer
+    settings      SerialStreamSettings
+    havesettings  bool
+    linestate     byte             // Line status
+    modemstate    byte             // Modem status
+    logger        *zap.SugaredLogger
+
+    // Command processing
+    stopCmdProcessor chan struct{}
+    cmdProcessorDone chan struct{}
 }
 ```
 
-### Common Methods
+### SerialStream Interface Implementation
 
-Both implement the `base.SerialStream` interface:
-- `Open()` - Initialize connection and configure serial parameters
-- `Close()` - Semantic close (no-op in both)
-- `Disconnect()` - Actually close the connection
-- `Read([]byte)` - Read data, filtering control commands
-- `Write([]byte)` - Write data with protocol-specific handling
-- `SetSpeed()` - Change serial parameters
-- `SetFlowControl()` - Change flow control
-- `SetDTR()` - Control DTR line
-- `SetTimeout()` / `SetDeadline()` - Timeout management
-- `SetLogger()` - Logging support
-- `SetMaxReceivedBytes()` - Byte limiting
-- `GetRxTxBytes()` - Statistics
+The implementation provides all required `base.SerialStream` methods:
+
+- `Open()` - Opens both streams and starts command processor
+- `Close()` - Semantic close (no-op)
+- `Disconnect()` - Stops command processor and closes both streams
+- `Read([]byte)` - Direct passthrough from data stream
+- `Write([]byte)` - Direct write to data stream
+- `SetSpeed()` - Sends SETBAUD command
+- `SetFlowControl()` - Sends FLOWCTRL command
+- `SetDTR()` - Sends LINECTRL command
+- `SetTimeout()` / `SetDeadline()` - Timeout management for data stream
+- `SetLogger()` - Logging support for both streams
+- `SetMaxReceivedBytes()` - Byte limiting for both streams
+- `GetRxTxBytes()` - Combined statistics from both streams
 
 ### Validation Functions
 
-Both include sanity checking:
+Serial parameter validation:
 - `sanitySpeed()` - Validates baud rate, data bits, parity, stop bits
 - `sanityControl()` - Validates flow control settings
+- Ensures only supported configurations are sent to device
 
-## Protocol State Machine
+## Connection States
 
-### RFC2217 States
-1. Closed
-2. Telnet negotiation
-3. COM port negotiation
-4. Configured
-5. Open (data transfer)
-6. Closing
-
-### Moxa Real COM States
-1. Closed
-2. TTY claimed (LOCAL_CMD_TTY_USED sent)
-3. Port initialized
-4. Notifications enabled
-5. Open (data transfer)
-6. Closing (LOCAL_CMD_TTY_UNUSED sent)
+1. **Closed** - Both streams disconnected
+2. **Opening** - Command stream opened, initializing
+3. **TTY Claimed** - `LOCAL_CMD_TTY_USED` sent
+4. **Configured** - Serial parameters sent via `PORT_INIT`
+5. **Notifications Enabled** - `START_NOTIFY` sent
+6. **Open** - Data transfer active, command processor running
+7. **Closing** - `LOCAL_CMD_TTY_UNUSED` sent, stopping processor
+8. **Closed** - Both streams disconnected
 
 ## Command Processing
 
-### RFC2217
-```go
-func (r *rfc2217Serial) Read(p []byte) (n int, err error) {
-    for len(p) > 0 {
-        read byte
-        if byte == IAC {
-            read next byte
-            if next != IAC {
-                processCommand(next)  // Telnet command
-            } else {
-                p[n] = IAC  // Escaped IAC byte
-                n++
-            }
-        } else {
-            p[n] = byte  // Data byte
-            n++
-        }
-    }
-}
-```
-
-### Moxa Real COM
+### Data Stream - Simple Passthrough
 ```go
 func (m *moxaRealCOMSerial) Read(p []byte) (n int, err error) {
-    for n < len(p) {
-        peek first byte
-        if byte == NPREAL_ASPP_COMMAND_SET || byte == NPREAL_LOCAL_COMMAND_SET {
-            read full command header (4 bytes)
-            read command data (length from header)
-            processCommand(cmdSet, cmd, data)
-        } else {
-            p[n] = byte  // Data byte
-            n++
+    // Direct passthrough - no filtering or processing
+    return m.dataStream.Read(p)
+}
+
+func (m *moxaRealCOMSerial) Write(src []byte) error {
+    // Direct write to data stream (chunked for large transfers)
+    return m.dataStream.Write(src)
+}
+```
+
+### Command Stream - Background Processor
+
+```go
+func (m *moxaRealCOMSerial) commandProcessor() {
+    defer close(m.cmdProcessorDone)
+
+    buffer := make([]byte, 1024)
+    for {
+        select {
+        case <-m.stopCmdProcessor:
+            return
+        default:
+        }
+
+        // Read command from command stream
+        m.commandStream.SetTimeout(100 * time.Millisecond)
+        n, err := m.commandStream.Read(buffer)
+        if err != nil {
+            continue  // Timeout or error, keep running
+        }
+
+        // Parse 4-byte command header
+        cmdSet := buffer[0]      // 0x01=ASPP, 0x02=LOCAL
+        cmd := buffer[1]         // Command code
+        length := binary.BigEndian.Uint16(buffer[2:4])
+        cmdData := buffer[4:4+length]
+
+        // Process based on command set
+        if cmdSet == NPREAL_ASPP_COMMAND_SET {
+            handleASPPCommand(cmd, cmdData)
         }
     }
 }
 ```
 
-## Testing Considerations
+### Command Handlers
+
+```go
+func (m *moxaRealCOMSerial) handleASPPCommand(cmd byte, data []byte) error {
+    switch cmd {
+    case ASPP_CMD_NOTIFY:
+        // Modem state notification
+        m.modemstate = data[0]
+
+    case ASPP_CMD_LSTATUS:
+        // Line status notification
+        m.linestate = data[0]
+
+    case ASPP_CMD_POLLING:
+        // Keep-alive poll - respond with ALIVE
+        response := writeCommand(ASPP_CMD_ALIVE, nil)
+        return m.commandStream.Write(response)
+
+    case ASPP_CMD_ALIVE:
+        // Keep-alive response received
+    }
+    return nil
+}
+```
+
+## Testing Recommendations
 
 ### Unit Testing
 - Mock `base.Stream` for testing without actual network
-- Test command formatting with known good packets
-- Test serial parameter validation
-- Test state transitions
+- Test command packet formatting (header + data)
+- Test serial parameter validation (sanitySpeed, sanityControl)
+- Test state transitions (Open, Close, Disconnect)
 
-### Integration Testing
-- Requires actual Moxa NPort device or simulator
-- Test with various baud rates and configurations
-- Test DTR/RTS control
-- Test flow control modes
-- Test large data transfers
-- Test command/data interleaving
+### Integration Testing with Real Hardware
+- **Binary Data Safety**: Send data containing 0x01, 0x02, and command-like sequences
+- **Baud Rate Changes**: Test dynamic speed changes while connected
+- **Flow Control**: Test none, hardware (RTS/CTS), and software (XON/XOFF) modes
+- **DTR/RTS Control**: Verify modem line control
+- **Large Transfers**: Test throughput with multi-megabyte transfers
+- **Keep-Alive**: Verify POLLING/ALIVE mechanism works
+- **Connection Stability**: Test reconnection after network interruption
 
 ## Performance Characteristics
 
 ### Buffer Management
-- Write buffer: 1024 bytes initial capacity
-- Write chunking: 2048 bytes per chunk
-- No read buffering (relies on TCP transport buffering)
+- Command buffer: 1024 bytes per command (reusable)
+- Write chunking: 2048 bytes per chunk (optimal for TCP)
+- Data stream: Direct passthrough (no internal buffering)
+- Command stream: Handled by background goroutine
 
-### Overhead Comparison
-- **RFC2217**: 5 bytes per command + IAC escaping in data
-- **Moxa Real COM**: 4 bytes per command, no data escaping
-- Moxa Real COM is more efficient for binary data transfers
+### Protocol Overhead
+- Command packets: 4-byte header + data
+- Data stream: Zero overhead (raw passthrough)
+- Efficient for binary data (no escaping needed)
 
 ## Security Considerations
 
 ### Current Implementation
-- No encryption support
-- Plain TCP connection
-- No authentication
+- Plain TCP connections (no encryption)
+- No authentication mechanism
+- Suitable for trusted networks only
 
-### Future Enhancements
+### Future Security Enhancements
 - SSL/TLS support (Moxa NPort 6000 series supports secure mode)
-- Would require SSL handshake after TCP connection
-- OpenSSL integration (as used in official driver)
+- Certificate-based authentication
+- Would require SSL handshake after TCP connection establishment
 
-## Compatibility Notes
+## Device Compatibility
 
-### Tested Devices
-- Implementation based on protocol reverse engineering
-- Should work with Moxa NPort 5000/6000 series
-- May require testing with actual hardware
+### Supported Devices
+- Moxa NPort 5000 series
+- Moxa NPort 6000 series
+- Moxa NPort W2150/W2250 series
+- Other Moxa devices with Real COM mode support
+
+### Port Configuration
+- Default ports: 950/966 (device dependent)
+- Both data and command streams connect to same port number
+- Each stream is a separate TCP connection
 
 ### Known Limitations
-1. DCD/DSR flow control not supported (protocol limitation)
-2. Break signal control not implemented
-3. Queue status commands not exposed
-4. Secure mode not implemented
-5. IPv6 DSCI commands not implemented
-6. Redundancy features not implemented
+1. **DCD/DSR flow control** - Not supported (protocol limitation)
+2. **Break signal** - Not implemented (ASPP_CMD_START_BREAK/STOP_BREAK)
+3. **Queue status** - Commands not exposed (ASPP_CMD_OQUEUE/IQUEUE)
+4. **Secure mode** - SSL/TLS not implemented
+5. **IPv6 DSCI** - Discovery protocol not implemented
 
-## Future Work
+## Implementation Roadmap
 
-- [ ] Implement break signal control (ASPP_CMD_START_BREAK/STOP_BREAK)
-- [ ] Add queue management (ASPP_CMD_OQUEUE/IQUEUE)
-- [ ] Add SSL/TLS support for secure mode
-- [ ] Improve read buffering for better performance
-- [ ] Add comprehensive unit tests
-- [ ] Test with actual Moxa hardware
-- [ ] Add connection retry logic
-- [ ] Implement DSCI discovery protocol (optional)
+### Priority Enhancements
+- [ ] Comprehensive unit tests with mock streams
+- [ ] Hardware validation with actual Moxa devices
+- [ ] Connection retry/reconnect logic
+- [ ] Break signal control implementation
+
+### Future Features
+- [ ] SSL/TLS support for secure mode (NPort 6000 series)
+- [ ] Queue management commands
+- [ ] DSCI discovery protocol
+- [ ] Performance optimizations
