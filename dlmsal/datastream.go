@@ -41,7 +41,7 @@ type datastream struct {
 
 type datastreamstate struct {
 	items   int
-	element dataTag // which element is this
+	element DataTag // which element is this
 }
 
 func newDataStream(src io.Reader, inmem bool, logger *zap.SugaredLogger) (DlmsDataStream, error) {
@@ -112,7 +112,7 @@ func (d *datastream) NextElement() (*DlmsDataStreamItem, error) {
 		}
 		return nil, err
 	}
-	t := dataTag(d.buffer[0])
+	t := DataTag(d.buffer[0])
 	// direct exception in case of array and struct here, these items should be stacked, screw compact array...
 	switch t {
 	case TagArray, TagStructure:
@@ -128,7 +128,7 @@ func (d *datastream) NextElement() (*DlmsDataStreamItem, error) {
 	}
 }
 
-func (d *datastream) arrayElement(t dataTag) (*DlmsDataStreamItem, error) {
+func (d *datastream) arrayElement(t DataTag) (*DlmsDataStreamItem, error) {
 	l, _, err := decodelength(d.src, &d.buffer)
 	if err != nil {
 		d.inerror = true

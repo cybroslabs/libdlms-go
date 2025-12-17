@@ -14,40 +14,40 @@ import (
 	"github.com/cybroslabs/libdlms-go/base"
 )
 
-type dataTag uint16
+type DataTag uint16
 
 const (
-	TagNull               dataTag = 0
-	TagArray              dataTag = 1
-	TagStructure          dataTag = 2
-	TagBoolean            dataTag = 3
-	TagBitString          dataTag = 4
-	TagDoubleLong         dataTag = 5
-	TagDoubleLongUnsigned dataTag = 6
-	TagFloatingPoint      dataTag = 7
-	TagOctetString        dataTag = 9
-	TagVisibleString      dataTag = 10
-	TagUTF8String         dataTag = 12
-	TagBCD                dataTag = 13
-	TagInteger            dataTag = 15
-	TagLong               dataTag = 16
-	TagUnsigned           dataTag = 17
-	TagLongUnsigned       dataTag = 18
-	TagCompactArray       dataTag = 19
-	TagLong64             dataTag = 20
-	TagLong64Unsigned     dataTag = 21
-	TagEnum               dataTag = 22
-	TagFloat32            dataTag = 23
-	TagFloat64            dataTag = 24
-	TagDateTime           dataTag = 25
-	TagDate               dataTag = 26
-	TagTime               dataTag = 27
-	TagDontCare           dataTag = 255
-	TagError              dataTag = 0x1000 // artifical tag outside of dlms standard but not interfering with it
+	TagNull               DataTag = 0
+	TagArray              DataTag = 1
+	TagStructure          DataTag = 2
+	TagBoolean            DataTag = 3
+	TagBitString          DataTag = 4
+	TagDoubleLong         DataTag = 5
+	TagDoubleLongUnsigned DataTag = 6
+	TagFloatingPoint      DataTag = 7
+	TagOctetString        DataTag = 9
+	TagVisibleString      DataTag = 10
+	TagUTF8String         DataTag = 12
+	TagBCD                DataTag = 13
+	TagInteger            DataTag = 15
+	TagLong               DataTag = 16
+	TagUnsigned           DataTag = 17
+	TagLongUnsigned       DataTag = 18
+	TagCompactArray       DataTag = 19
+	TagLong64             DataTag = 20
+	TagLong64Unsigned     DataTag = 21
+	TagEnum               DataTag = 22
+	TagFloat32            DataTag = 23
+	TagFloat64            DataTag = 24
+	TagDateTime           DataTag = 25
+	TagDate               DataTag = 26
+	TagTime               DataTag = 27
+	TagDontCare           DataTag = 255
+	TagError              DataTag = 0x1000 // artifical tag outside of dlms standard but not interfering with it
 )
 
 type DlmsData struct {
-	Tag   dataTag
+	Tag   DataTag
 	Value any
 }
 
@@ -70,8 +70,8 @@ func NewDlmsError(result base.DlmsResultTag) error {
 }
 
 type DlmsCompactArray struct {
-	tag   dataTag
-	tags  []dataTag
+	tag   DataTag
+	tags  []DataTag
 	value []DlmsData
 }
 
@@ -87,12 +87,12 @@ func decodeDataTag(src io.Reader, tmpbuffer *tmpbuffer) (data DlmsData, c int, e
 	if err != nil {
 		return
 	}
-	t := dataTag(tmpbuffer[0])
+	t := DataTag(tmpbuffer[0])
 	data, c, err = decodeData(src, t, tmpbuffer)
 	return data, c + 1, err
 }
 
-func decodeDataArray(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData, c int, err error) {
+func decodeDataArray(src io.Reader, tag DataTag, tmpbuffer *tmpbuffer) (data DlmsData, c int, err error) {
 	var ii int
 	l, c, err := decodelength(src, tmpbuffer)
 	if err != nil {
@@ -109,7 +109,7 @@ func decodeDataArray(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data Dlm
 	return DlmsData{Tag: tag, Value: d}, c, nil
 }
 
-func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData, c int, err error) {
+func decodeData(src io.Reader, tag DataTag, tmpbuffer *tmpbuffer) (data DlmsData, c int, err error) {
 	switch tag {
 	case TagNull:
 		return DlmsData{Tag: tag}, 0, nil
@@ -270,8 +270,8 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 			if err != nil {
 				return data, 0, fmt.Errorf("too short data for compact array %w", err)
 			}
-			ctag := dataTag(tmpbuffer[0])
-			var types []dataTag
+			ctag := DataTag(tmpbuffer[0])
+			var types []DataTag
 			if ctag == TagStructure { // determine structure items types
 				l, c, err := decodelength(src, tmpbuffer)
 				if err != nil {
@@ -288,16 +288,16 @@ func decodeData(src io.Reader, tag dataTag, tmpbuffer *tmpbuffer) (data DlmsData
 				if err != nil {
 					return data, 0, fmt.Errorf("too short data for compact array (number of structure items), %w", err)
 				}
-				types = make([]dataTag, l)
+				types = make([]DataTag, l)
 				for i := range l {
-					types[i] = dataTag(tmp[i])
+					types[i] = DataTag(tmp[i])
 				}
 				n += int(l)
 			} else { // just bunch of items
 				if ctag == TagNull {
 					return data, 0, fmt.Errorf("unable to decode compact array with null tag")
 				}
-				types = make([]dataTag, 1)
+				types = make([]DataTag, 1)
 				types[0] = ctag
 			}
 
@@ -643,19 +643,19 @@ func encodeStructureWithoutTags(out *bytes.Buffer, d *DlmsData) error {
 	return nil
 }
 
-func getstructuretypes(d *DlmsData) ([]dataTag, error) {
+func getstructuretypes(d *DlmsData) ([]DataTag, error) {
 	if d.Tag != TagStructure {
 		return nil, fmt.Errorf("data are not a structure")
 	}
 	switch t := d.Value.(type) {
 	case []*DlmsData:
-		r := make([]dataTag, len(t))
+		r := make([]DataTag, len(t))
 		for i, dt := range t {
 			r[i] = dt.Tag
 		}
 		return r, nil
 	case []DlmsData:
-		r := make([]dataTag, len(t))
+		r := make([]DataTag, len(t))
 		for i, dt := range t {
 			r[i] = dt.Tag
 		}
