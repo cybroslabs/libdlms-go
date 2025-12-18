@@ -42,7 +42,7 @@ type moxaRealCom struct {
 
 	logger *zap.SugaredLogger
 
-	cmderr  error
+	cmderr  atomic.Value
 	cmdresp chan []byte
 	cmdreq  chan byte
 }
@@ -237,7 +237,7 @@ func (m *moxaRealCom) commandhandler() {
 		// but make unknown commands error and stop the handler
 		_, err := io.ReadFull(m.cmdconn, cmdbuff[:1])
 		if err != nil {
-			m.cmderr = err
+			m.cmderr.Store(err)
 			return
 		}
 		var ccmd []byte
@@ -251,12 +251,12 @@ func (m *moxaRealCom) commandhandler() {
 			wlen = 3
 		default:
 			m.logf("unknown command received: %02x", cmdbuff[0]) // for now, consider that an error
-			m.cmderr = fmt.Errorf("unknown command received: %02x", cmdbuff[0])
+			m.cmderr.Store(fmt.Errorf("unknown command received: %02x", cmdbuff[0]))
 			return
 		}
 		_, err = io.ReadFull(m.cmdconn, cmdbuff[1:wlen])
 		if err != nil {
-			m.cmderr = err
+			m.cmderr.Store(err)
 			return
 		}
 		ccmd = cmdbuff[:wlen]
@@ -267,7 +267,7 @@ func (m *moxaRealCom) commandhandler() {
 			select {
 			case expected, ok = <-m.cmdreq:
 				if !ok {
-					m.cmderr = fmt.Errorf("command handler closed")
+					m.cmderr.Store(fmt.Errorf("command handler closed"))
 					return
 				}
 			default: // non blocking
@@ -278,7 +278,7 @@ func (m *moxaRealCom) commandhandler() {
 			select {
 			case m.cmdresp <- ccmd:
 			case <-m.cmdreq: // consider that a close, outside thing CANT send more than one command without reading or timeouting response
-				m.cmderr = fmt.Errorf("command handler closed")
+				m.cmderr.Store(fmt.Errorf("command handler closed"))
 				return
 			}
 			continue
@@ -303,6 +303,10 @@ func (m *moxaRealCom) commandhandler() {
 }
 
 func (m *moxaRealCom) handlecommand(cmd []byte) ([]byte, error) {
+	cerr := m.cmderr.Load()
+	if cerr != nil {
+		return nil, cerr.(error)
+	}
 	if len(cmd) == 0 {
 		return nil, fmt.Errorf("empty command")
 	}
@@ -354,6 +358,10 @@ func (m *moxaRealCom) Read(p []byte) (n int, err error) {
 	if !m.isopen {
 		return 0, base.ErrNotOpened
 	}
+	cerr := m.cmderr.Load()
+	if cerr != nil {
+		return 0, cerr.(error)
+	}
 	if len(p) == 0 {
 		return 0, base.ErrNothingToRead
 	}
@@ -364,7 +372,6 @@ func (m *moxaRealCom) SetDTR(dtr bool) error {
 	if !m.isopen {
 		return base.ErrNotOpened
 	}
-
 	var cmd [4]byte
 	// no flush here, probably...
 	cmd[0] = ASPP_CMD_LINECTRL
@@ -385,7 +392,6 @@ func (m *moxaRealCom) SetFlowControl(flowControl base.SerialFlowControl) error {
 	if !m.isopen {
 		return base.ErrNotOpened
 	}
-
 	var cmd [6]byte
 	err := m.flush()
 	if err != nil {
@@ -450,6 +456,10 @@ func (m *moxaRealCom) SetTimeout(t time.Duration) {
 func (m *moxaRealCom) Write(src []byte) error {
 	if !m.isopen {
 		return base.ErrNotOpened
+	}
+	cerr := m.cmderr.Load()
+	if cerr != nil {
+		return cerr.(error)
 	}
 	if len(src) == 0 {
 		return nil
