@@ -65,6 +65,8 @@ type macpacket struct {
 	control   byte
 	info      []byte
 	segmented bool
+	log       uint16 // upper
+	phy       uint16 // lower
 }
 
 type Settings struct {
@@ -120,6 +122,12 @@ func New(transport base.Stream, settings *Settings) (base.Stream, error) {
 func (w *maclayer) logf(format string, v ...any) {
 	if w.logger != nil {
 		w.logger.Infof(format, v...)
+	}
+}
+
+func (w *maclayer) logr(format string, v ...any) {
+	if w.logger != nil {
+		w.logger.Errorf(format, v...)
 	}
 }
 
@@ -645,6 +653,15 @@ func (w *maclayer) readpackets() ([]macpacket, error) {
 		if err != nil {
 			return nil, err
 		}
+		if m.log != w.settings.Logical {
+			w.logr("mismatch logical address expected %v, got %v", w.settings.Logical, m.log)
+			continue
+		}
+		if m.phy != w.settings.Physical {
+			w.logr("mismatch physical address expected %v, got %v", w.settings.Physical, m.phy)
+			continue
+		}
+
 		first = false
 		final = m.control&0x10 != 0
 		m.control &= 0xef // clear final bit
@@ -764,15 +781,13 @@ func (w *maclayer) parsepacket(ori []byte) (pck macpacket, err error) {
 		return pck, fmt.Errorf("invalid client address")
 	}
 	offset := 0
-	var log uint16     // upper
-	var phy uint16     // lower
 	if ori[3]&1 != 0 { // single address
-		log = uint16(ori[3] >> 1)
-		phy = 0
+		pck.log = uint16(ori[3] >> 1)
+		pck.phy = 0
 		offset = 1
 	} else if ori[4]&1 != 0 { // each single byte
-		log = uint16(ori[3] >> 1)
-		phy = uint16(ori[4] >> 1)
+		pck.log = uint16(ori[3] >> 1)
+		pck.phy = uint16(ori[4] >> 1)
 		offset = 2
 	} else if ori[5]&1 != 0 {
 		return pck, fmt.Errorf("invalid address field, premature termination bit")
@@ -781,16 +796,9 @@ func (w *maclayer) parsepacket(ori []byte) (pck macpacket, err error) {
 	} else if ori[6]&1 == 0 {
 		return pck, fmt.Errorf("there is no termination bit in address field")
 	} else {
-		log = uint16(ori[3]>>1)<<7 | uint16(ori[4]>>1)
-		phy = uint16(ori[5]>>1)<<7 | uint16(ori[6]>>1)
+		pck.log = uint16(ori[3]>>1)<<7 | uint16(ori[4]>>1)
+		pck.phy = uint16(ori[5]>>1)<<7 | uint16(ori[6]>>1)
 		offset = 4
-	}
-
-	if log != w.settings.Logical {
-		return pck, fmt.Errorf("mismatch logical address")
-	}
-	if phy != w.settings.Physical {
-		return pck, fmt.Errorf("mismatch physical address")
 	}
 
 	if len(ori) < offset+6 {
@@ -811,6 +819,7 @@ func (w *maclayer) parsepacket(ori []byte) (pck macpacket, err error) {
 		if fcs != uint16(ori[len(ori)-2])|(uint16(ori[len(ori)-1])<<8) {
 			return pck, fmt.Errorf("fcs mismatch")
 		}
+
 		return pck, nil
 	case rem == 4:
 		return pck, fmt.Errorf("invalid packet length")
