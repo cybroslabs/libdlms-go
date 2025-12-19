@@ -6,6 +6,7 @@ import (
 	"net"
 	"slices"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -163,17 +164,28 @@ func (m *moxaRealCom) Open() error { // first open cmd port and send the init
 		return err
 	}
 
-	address := net.JoinHostPort(m.hostname, strconv.Itoa(m.cmdport))
-	m.cmdconn, err = net.DialTimeout("tcp", address, m.timeout)
-	if err != nil {
-		m.logf("Connect to %s failed: %v", address, err.Error())
-		return fmt.Errorf("connect to command port failed: %w", err)
-	}
+	var dataerr error
+	var cmderr error
+	var wg sync.WaitGroup
 
-	err = m.transport.Open()
-	if err != nil {
-		_ = m.cmdconn.Close()
-		return err
+	address := net.JoinHostPort(m.hostname, strconv.Itoa(m.cmdport))
+	wg.Go(func() {
+		m.cmdconn, cmderr = net.DialTimeout("tcp", address, m.timeout)
+	})
+	wg.Go(func() {
+		dataerr = m.transport.Open()
+	})
+	wg.Wait()
+	if dataerr != nil {
+		if cmderr == nil {
+			_ = m.cmdconn.Close()
+		}
+		return dataerr
+	}
+	if cmderr != nil {
+		_ = m.transport.Disconnect()
+		m.logf("Connect to %s failed: %v", address, cmderr)
+		return fmt.Errorf("connect to command port failed: %w", cmderr)
 	}
 
 	initcmd[0] = ASPP_CMD_PORT_INIT
