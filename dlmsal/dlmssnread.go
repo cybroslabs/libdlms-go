@@ -2,7 +2,6 @@ package dlmsal
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 
@@ -12,7 +11,7 @@ import (
 type dlmssnblockread struct {
 	io.Reader
 	master    *dlmsal
-	state     int // 0 - first block, 1 - inside block data
+	state     int
 	blockexp  uint16
 	lastblock bool
 	transport io.Reader
@@ -84,7 +83,7 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 		return nil, fmt.Errorf("different amount of data received, expected %d got %d", len(items), l)
 	}
 	ret := make([]DlmsData, len(items))
-	for i := range ret {
+	for i := 0; i < len(ret); i++ {
 		_, err = io.ReadFull(str, d.tmpbuffer[:1])
 		if err != nil {
 			return nil, err
@@ -102,12 +101,7 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 			}
 			ret[i] = NewDlmsDataError(base.DlmsResultTag(d.tmpbuffer[0]))
 		case 2:
-			loc := d.newsnblockreader(str)
-			ret[i], _, err = decodeDataTag(loc, &d.tmpbuffer)
-			if err != nil {
-				return nil, err
-			}
-			err = loc.Close() // test even readout
+			i, err = d.decodesnblockreader(str, i, ret)
 			if err != nil {
 				return nil, err
 			}
@@ -119,29 +113,45 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 	return ret, nil
 }
 
-func (d *dlmsal) newsnblockreader(str io.Reader) io.ReadCloser {
-	return &dlmssnblockread{
+func (d *dlmsal) decodesnblockreader(str io.Reader, i int, ret []DlmsData) (int, error) {
+	var tmp tmpbuffer
+	blc := &dlmssnblockread{
 		transport: str,
 		master:    d,
 		blockexp:  1,
 	}
-}
 
-func (d *dlmssnblockread) Close() error {
-	if d.err != nil {
-		return nil // supress, it was already reported earlier
+	// read list of items after block header
+	items, _, err := decodelength(blc, &tmp) // that should fit too, fucking fuck
+	if err != nil {
+		return i, err
 	}
-
-	var buf [1024]byte
-	for {
-		_, err := d.Read(buf[:])
+	if i+int(items) > len(ret) {
+		return i, fmt.Errorf("block read items exceed expected amount, have %d need %d", len(ret)-i, items)
+	}
+	// ok, so inner block cycle
+	for j := uint(0); j < items; j++ {
+		_, err = io.ReadFull(blc, tmp[:1])
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return nil
+			return i, err
+		}
+		switch tmp[0] {
+		case 0:
+			ret[i+int(j)], _, err = decodeDataTag(blc, &tmp)
+			if err != nil {
+				return i, err
 			}
-			return err
+		case 1:
+			_, err = io.ReadFull(blc, tmp[:1])
+			if err != nil {
+				return i, err
+			}
+			ret[i+int(j)] = NewDlmsDataError(base.DlmsResultTag(tmp[0]))
+		default:
+			return i, fmt.Errorf("unexpected response inner tag: 0x%02x", tmp[0])
 		}
 	}
+	return i + int(items), nil
 }
 
 func (d *dlmssnblockread) Read(p []byte) (n int, err error) {
