@@ -60,7 +60,10 @@ func (m *moxaRealCom) Disconnect() (err error) {
 	if m.isopen {
 		m.isopen = false
 		err = m.transport.Disconnect()
-		_ = m.cmdconn.Close() // close that shit at all cost, so unblock some possible forever stuck read
+		cerr := m.cmdconn.Close() // close that shit at all cost, so unblock some possible forever stuck read
+		if err == nil {
+			err = cerr
+		}
 		close(m.cmdreq)
 	}
 	return
@@ -167,17 +170,14 @@ func (m *moxaRealCom) Open() error { // first open cmd port and send the init
 	var dataerr error
 	var cmderr error
 	var wg sync.WaitGroup
-
 	address := net.JoinHostPort(m.hostname, strconv.Itoa(m.cmdport))
-	wg.Go(func() {
-		m.cmdconn, cmderr = net.DialTimeout("tcp", address, m.timeout)
-	})
 	wg.Go(func() {
 		dataerr = m.transport.Open()
 	})
+	m.cmdconn, cmderr = net.DialTimeout("tcp", address, m.timeout)
 	wg.Wait()
 	if dataerr != nil {
-		if cmderr == nil {
+		if m.cmdconn != nil {
 			_ = m.cmdconn.Close()
 		}
 		return dataerr
