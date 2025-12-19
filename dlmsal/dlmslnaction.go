@@ -210,7 +210,7 @@ func (ln *dlmsalaction) actiondatinnertag(tag ActionResponseTag) (data *DlmsData
 		d, _, err := decodeDataTag(ln, &master.tmpbuffer)
 		return &d, err
 	}
-	return data, fmt.Errorf("unexpected response tag: %02x", tag)
+	return data, fmt.Errorf("unexpected response tag: 0x%02x", tag)
 }
 
 func (ln *dlmsalaction) actiondata(tag base.CosemTag) (data *DlmsData, err error) {
@@ -290,7 +290,7 @@ func (ln *dlmsalaction) Read(p []byte) (n int, err error) { // this will go to d
 				return 0, err
 			}
 			if tag != base.TagActionResponse {
-				return 0, fmt.Errorf("unexpected response tag: %02x", tag)
+				return 0, fmt.Errorf("unexpected response tag: 0x%02x", tag)
 			}
 			ln.transport = str
 
@@ -299,7 +299,7 @@ func (ln *dlmsalaction) Read(p []byte) (n int, err error) { // this will go to d
 				return 0, err
 			}
 			if master.tmpbuffer[0] != byte(TagActionResponseWithPBlock) || master.tmpbuffer[1]&7 != master.invokeid {
-				return 0, fmt.Errorf("unexpected response tag: %02x", master.tmpbuffer[0])
+				return 0, fmt.Errorf("unexpected response tag: 0x%02x", master.tmpbuffer[0])
 			}
 			// set last, check block number and set remaining
 			ln.lastblock = master.tmpbuffer[2] != 0

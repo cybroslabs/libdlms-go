@@ -175,7 +175,7 @@ func (ln *dlmsalget) getstreamdata(tag base.CosemTag, inmem bool) (s DlmsDataStr
 		}
 		return str, nil
 	}
-	return nil, fmt.Errorf("unexpected response tag: %02x", master.tmpbuffer[0])
+	return nil, fmt.Errorf("unexpected response tag: 0x%02x", master.tmpbuffer[0])
 }
 
 func (ln *dlmsalget) getnextdata(tag base.CosemTag, i int) (cont bool, err error) {
@@ -278,7 +278,7 @@ func (ln *dlmsalget) getnextdata(tag base.CosemTag, i int) (cont bool, err error
 			}
 			return false, err
 		}
-		return false, fmt.Errorf("unexpected response tag: %02x", master.tmpbuffer[0])
+		return false, fmt.Errorf("unexpected response tag: 0x%02x", master.tmpbuffer[0])
 	case 2: // block content
 		err = ln.decodedata(i)
 		return false, err
@@ -357,7 +357,7 @@ func (ln *dlmsalget) Read(p []byte) (n int, err error) { // this will go to data
 				return 0, err
 			}
 			if tag != base.TagGetResponse {
-				return 0, fmt.Errorf("unexpected response tag: %02x", tag)
+				return 0, fmt.Errorf("unexpected response tag: 0x%02x", tag)
 			}
 			ln.transport = str
 
@@ -366,7 +366,7 @@ func (ln *dlmsalget) Read(p []byte) (n int, err error) { // this will go to data
 				return 0, err
 			}
 			if master.tmpbuffer[0] != byte(TagGetResponseWithDataBlock) || master.tmpbuffer[1]&7 != master.invokeid {
-				return 0, fmt.Errorf("unexpected response tag: %02x", master.tmpbuffer[0])
+				return 0, fmt.Errorf("unexpected response tag: 0x%02x", master.tmpbuffer[0])
 			}
 			// set last, check block number and set remaining
 			ln.lastblock = master.tmpbuffer[2] != 0

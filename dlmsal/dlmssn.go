@@ -89,7 +89,7 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 			}
 			ret[i] = NewDlmsDataError(base.DlmsResultTag(d.tmpbuffer[0]))
 		default:
-			return nil, fmt.Errorf("unexpected response tag: %x", d.tmpbuffer[0])
+			return nil, fmt.Errorf("unexpected response tag: 0x%02x", d.tmpbuffer[0])
 		}
 	}
 
@@ -156,7 +156,7 @@ func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream,
 		return nil, NewDlmsError(base.DlmsResultTag(d.tmpbuffer[0]))
 	}
 
-	return nil, fmt.Errorf("unexpected response tag: %x", d.tmpbuffer[0])
+	return nil, fmt.Errorf("unexpected response tag: 0x%02x", d.tmpbuffer[0])
 }
 
 // write support here
