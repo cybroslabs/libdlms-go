@@ -199,6 +199,15 @@ func (d *dlmssnblockread) Read(p []byte) (n int, err error) {
 				d.err = fmt.Errorf("expecting only one item during block transfer, need to experiment")
 				return 0, d.err
 			}
+			_, d.err = io.ReadFull(str, d.master.tmpbuffer[:1])
+			if d.err != nil {
+				return 0, d.err
+			}
+			if d.master.tmpbuffer[0] != 2 {
+				d.err = fmt.Errorf("expecting block transfer for that single item during processing")
+				return 0, d.err
+			}
+
 			d.blockexp++
 			d.state = 0
 			return d.Read(p)
