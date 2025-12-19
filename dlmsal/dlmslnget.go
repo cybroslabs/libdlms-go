@@ -239,7 +239,7 @@ func (ln *dlmsalget) getnextdata(tag base.CosemTag, i int) (cont bool, err error
 				return false, err
 			}
 			if l != uint(len(ln.data)) {
-				return false, fmt.Errorf("different amount of data received")
+				return false, fmt.Errorf("different amount of data received, expected %d got %d", len(ln.data), l)
 			}
 			for i := range ln.data {
 				_, err = io.ReadFull(ln.transport, master.tmpbuffer[:1])
@@ -272,7 +272,7 @@ func (ln *dlmsalget) getnextdata(tag base.CosemTag, i int) (cont bool, err error
 					return false, err
 				}
 				if l != uint(len(ln.data)) {
-					return false, fmt.Errorf("different amount of data received")
+					return false, fmt.Errorf("different amount of data received, expected %d got %d", len(ln.data), l)
 				}
 				err = ln.decodedata(i)
 			}

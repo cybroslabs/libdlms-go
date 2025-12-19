@@ -312,7 +312,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 					return nil, err
 				}
 				if l != uint(len(items)) {
-					return nil, fmt.Errorf("different amount of data received")
+					return nil, fmt.Errorf("different amount of data received, expected %d got %d", len(items), l)
 				}
 				var res []byte
 				if len(items)+4 > len(al.tmpbuffer) {
@@ -371,7 +371,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 			return nil, err
 		}
 		if l != uint(len(items)) {
-			return nil, fmt.Errorf("different amount of data received")
+			return nil, fmt.Errorf("different amount of data received, expected %d got %d", len(items), l)
 		}
 		var res []byte
 		if len(items) > len(al.tmpbuffer) {

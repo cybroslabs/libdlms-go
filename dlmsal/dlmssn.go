@@ -68,7 +68,7 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 		return nil, err
 	}
 	if int(l) != len(items) {
-		return nil, fmt.Errorf("different amount of data received")
+		return nil, fmt.Errorf("different amount of data received, expected %d got %d", len(items), l)
 	}
 	ret := make([]DlmsData, len(items))
 	for i := range ret {
@@ -226,7 +226,7 @@ func (d *dlmsal) Write(items []DlmsSNRequestItem) ([]base.DlmsResultTag, error) 
 		return nil, err
 	}
 	if l != uint(len(items)) {
-		return nil, fmt.Errorf("different amount of data received")
+		return nil, fmt.Errorf("different amount of data received, expected %d got %d", len(items), l)
 	}
 	ret := make([]base.DlmsResultTag, len(items))
 	for i := range ret {
