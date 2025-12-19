@@ -2,6 +2,7 @@ package dlmsal
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
@@ -149,6 +150,22 @@ func (d *dlmsal) decodesnblockreader(str io.Reader, i int, ret []DlmsData) (int,
 			ret[i+int(j)] = NewDlmsDataError(base.DlmsResultTag(tmp[0]))
 		default:
 			return i, fmt.Errorf("unexpected response inner tag: 0x%02x", tmp[0])
+		}
+	}
+	if blc.remain != 0 || !blc.lastblock {
+		d.logf("incomplete block read, remaining %d bytes, last block %v", blc.remain, blc.lastblock)
+		var buff [1024]byte
+		for {
+			n, err := blc.Read(buff[:])
+			if err != nil {
+				if !errors.Is(err, io.EOF) {
+					return i, err
+				}
+				break
+			}
+			if n == 0 {
+				return i, fmt.Errorf("no data read, shouldnt happen")
+			}
 		}
 	}
 	return i + int(items), nil
