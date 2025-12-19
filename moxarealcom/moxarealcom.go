@@ -24,6 +24,8 @@ const (
 	ASPP_CMD_FLOWCTRL    = 0x11
 	ASPP_CMD_LINECTRL    = 0x12
 	ASPP_CMD_FLUSH       = 0x14
+	ASPP_CMD_POLLING     = 0x27
+	ASPP_CMD_ALIVE       = 0x28
 )
 
 type moxaRealCom struct {
@@ -34,7 +36,7 @@ type moxaRealCom struct {
 
 	cmdconn  net.Conn
 	incoming atomic.Int64 // no limits are set here as main limit is at data transport layer
-	outgoing int64
+	outgoing atomic.Int64
 	hostname string
 	cmdport  int
 
@@ -77,7 +79,7 @@ func (w *moxaRealCom) logd(format string, v ...any) {
 
 func (m *moxaRealCom) GetRxTxBytes() (int64, int64) {
 	i, o := m.transport.GetRxTxBytes()
-	return i + m.incoming.Load(), o + m.outgoing
+	return i + m.incoming.Load(), o + m.outgoing.Load()
 }
 
 func baudstobyte(b int) (byte, error) {
@@ -216,7 +218,7 @@ func (m *moxaRealCom) Open() error { // first open cmd port and send the init
 
 func (m *moxaRealCom) initResponse(resp []byte) error {
 	if resp[1] != 3 { // length
-		return fmt.Errorf("invalid init response second byte %02x", resp[1])
+		return fmt.Errorf("invalid init response second byte 0x%02x", resp[1])
 	}
 	return nil // not needed handle DSR CTS or DCD so just ignore those
 }
@@ -247,11 +249,11 @@ func (m *moxaRealCom) commandhandler() {
 			wlen = 5 // but usually the length is the second byte, damn that protocol
 		case ASPP_CMD_NOTIFY, ASPP_CMD_WAIT_OQUEUE:
 			wlen = 4
-		case ASPP_CMD_TX_FIFO, ASPP_CMD_XONXOFF, ASPP_CMD_IOCTL, ASPP_CMD_FLOWCTRL, ASPP_CMD_LINECTRL, ASPP_CMD_FLUSH:
+		case ASPP_CMD_TX_FIFO, ASPP_CMD_XONXOFF, ASPP_CMD_IOCTL, ASPP_CMD_FLOWCTRL, ASPP_CMD_LINECTRL, ASPP_CMD_FLUSH, ASPP_CMD_POLLING:
 			wlen = 3
 		default:
-			m.logf("unknown command received: %02x", cmdbuff[0]) // for now, consider that an error
-			m.cmderr.Store(fmt.Errorf("unknown command received: %02x", cmdbuff[0]))
+			m.logf("unknown command received: 0x%02x", cmdbuff[0]) // for now, consider that an error
+			m.cmderr.Store(fmt.Errorf("unknown command received: 0x%02x", cmdbuff[0]))
 			return
 		}
 		_, err = io.ReadFull(m.cmdconn, cmdbuff[1:wlen])
@@ -287,6 +289,17 @@ func (m *moxaRealCom) commandhandler() {
 		switch cmdbuff[0] {
 		case ASPP_CMD_PORT_INIT:
 			m.logf("strange, unwanted init command, ignored")
+		case ASPP_CMD_POLLING:
+			m.logf("polling received, sending alive answer")
+			ccmd[0] = ASPP_CMD_ALIVE
+			m.logd(base.LogHex("CMD TX", ccmd))
+			_, err = m.cmdconn.Write(ccmd) // thread safe, so no lock here
+			if err != nil {
+				m.logf("unable to send alive response: %v", err)
+				m.cmderr.Store(err)
+				return
+			}
+			m.outgoing.Add(int64(len(ccmd)))
 		case ASPP_CMD_NOTIFY:
 			m.logf("process port notify command")
 			if cmdbuff[1]&0x20 != 0 {
@@ -319,7 +332,7 @@ func (m *moxaRealCom) handlecommand(cmd []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	m.outgoing += int64(len(cmd))
+	m.outgoing.Add(int64(len(cmd)))
 	select {
 	case resp, ok := <-m.cmdresp:
 		if !ok {
@@ -345,7 +358,7 @@ func (m *moxaRealCom) handleOkCmd(cmd []byte) error {
 		return fmt.Errorf("expecting only 3 bytes, usually OK, in case of anything else, just end this missery (it can send also ERROR or something probably)")
 	}
 	if resp[1] != 'O' || resp[2] != 'K' {
-		return fmt.Errorf("command failed, response: %02x %02x", resp[1], resp[2])
+		return fmt.Errorf("command failed, response: 0x%02x 0x%02x", resp[1], resp[2])
 	}
 	return nil
 }
