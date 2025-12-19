@@ -80,13 +80,13 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 	if err != nil {
 		return nil, err
 	}
-	if int(l) != len(items) {
-		return nil, fmt.Errorf("different amount of data received, expected %d got %d", len(items), l)
-	}
 	ret := make([]DlmsData, len(items))
 	for i := 0; i < len(ret); i++ {
 		_, err = io.ReadFull(str, d.tmpbuffer[:1])
 		if err != nil {
+			if i < len(items) {
+				return nil, fmt.Errorf("incomplete list of returned values, main list has %d items, but wanted %d items: %w", l, len(items), err)
+			}
 			return nil, err
 		}
 		switch d.tmpbuffer[0] {
@@ -102,7 +102,7 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 			}
 			ret[i] = NewDlmsDataError(base.DlmsResultTag(d.tmpbuffer[0]))
 		case 2:
-			i, err = d.decodesnblockreader(str, i, ret)
+			i, err = d.decodesnblockreader(str, i, ret) // maybe only one result should be here in case of block transfer, check that?
 			if err != nil {
 				return nil, err
 			}
