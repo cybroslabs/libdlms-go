@@ -12,7 +12,7 @@ import (
 type dlmssnblockread struct {
 	io.Reader
 	master    *dlmsal
-	state     int // 0 - first block, 1 - inside block data, 2 - next block
+	state     int // 0 - first block, 1 - inside block data
 	blockexp  uint16
 	lastblock bool
 	transport io.Reader
@@ -190,7 +190,18 @@ func (d *dlmssnblockread) Read(p []byte) (n int, err error) {
 				d.err = fmt.Errorf("unexpected tag: %x", tag)
 				return 0, d.err
 			}
-			panic("fuck")
+			l, _, err := decodelength(str, &d.master.tmpbuffer)
+			if err != nil {
+				d.err = err
+				return 0, err
+			}
+			if l != 1 { // this is TODO big hardcore, in case of some list and only SOMETHING is blocked, them what the fuck to do?
+				d.err = fmt.Errorf("expecting only one item during block transfer, need to experiment")
+				return 0, d.err
+			}
+			d.blockexp++
+			d.state = 0
+			return d.Read(p)
 		}
 		if uint(len(p)) > d.remain {
 			p = p[:d.remain]
