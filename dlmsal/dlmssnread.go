@@ -1,11 +1,24 @@
 package dlmsal
 
 import (
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 
 	"github.com/cybroslabs/libdlms-go/base"
 )
+
+type dlmssnblockread struct {
+	io.Reader
+	master    *dlmsal
+	state     int // 0 - first block, 1 - inside block data, 2 - next block
+	blockexp  uint16
+	lastblock bool
+	transport io.Reader
+	remain    uint
+	err       error
+}
 
 // SN func read, for now it should be enough
 func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
@@ -88,12 +101,107 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 				return nil, err
 			}
 			ret[i] = NewDlmsDataError(base.DlmsResultTag(d.tmpbuffer[0]))
+		case 2:
+			loc := d.newsnblockreader(str)
+			ret[i], _, err = decodeDataTag(loc, &d.tmpbuffer)
+			if err != nil {
+				return nil, err
+			}
+			err = loc.Close() // test even readout
+			if err != nil {
+				return nil, err
+			}
 		default:
 			return nil, fmt.Errorf("unexpected response tag: 0x%02x", d.tmpbuffer[0])
 		}
 	}
 
 	return ret, nil
+}
+
+func (d *dlmsal) newsnblockreader(str io.Reader) io.ReadCloser {
+	return &dlmssnblockread{
+		transport: str,
+		master:    d,
+		blockexp:  1,
+	}
+}
+
+func (d *dlmssnblockread) Close() error {
+	if d.err != nil {
+		return nil // supress, it was already reported earlier
+	}
+
+	var buf [1024]byte
+	for {
+		_, err := d.Read(buf[:])
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+func (d *dlmssnblockread) Read(p []byte) (n int, err error) {
+	var header [3]byte
+	// read header
+	switch d.state {
+	case 0:
+		_, d.err = io.ReadFull(d.transport, header[:])
+		if d.err != nil {
+			return 0, d.err // no mercy
+		}
+		d.lastblock = header[0] != 0
+		dno := binary.BigEndian.Uint16(header[1:])
+		if dno != d.blockexp {
+			d.err = fmt.Errorf("block read sequence error, expected %d got %d", d.blockexp, dno)
+			return 0, d.err
+		}
+		d.remain, _, d.err = decodelength(d.transport, &d.master.tmpbuffer)
+		if d.err != nil {
+			return 0, d.err
+		}
+		d.state = 1
+		return d.Read(p)
+	case 1: // inside block data
+		if d.remain == 0 {
+			if d.lastblock {
+				d.err = io.EOF
+				return 0, d.err
+			}
+			// need another block
+			local := &d.master.pdu
+			// format request into byte slice and send that to unit
+			local.Reset()
+			local.WriteByte(byte(base.TagReadRequest))
+			encodelength(local, 1)
+			local.WriteByte(5) // next block
+			local.WriteByte(byte(d.blockexp >> 8))
+			local.WriteByte(byte(d.blockexp))
+			tag, str, err := d.master.sendpdu()
+			if err != nil {
+				d.err = err
+				return 0, err
+			}
+			d.transport = str
+			if tag != base.TagReadResponse {
+				d.err = fmt.Errorf("unexpected tag: %x", tag)
+				return 0, d.err
+			}
+			panic("fuck")
+		}
+		if uint(len(p)) > d.remain {
+			p = p[:d.remain]
+		}
+		n, d.err = io.ReadFull(d.transport, p)
+		d.remain -= uint(n)
+		return n, d.err
+	default:
+		d.err = fmt.Errorf("unimplemented state %d, program error", d.state)
+		return 0, d.err
+	}
 }
 
 func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream, error) {
@@ -157,99 +265,4 @@ func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream,
 	}
 
 	return nil, fmt.Errorf("unexpected response tag: 0x%02x", d.tmpbuffer[0])
-}
-
-// write support here
-func (d *dlmsal) Write(items []DlmsSNRequestItem) ([]base.DlmsResultTag, error) {
-	if !d.transport.isopen {
-		return nil, base.ErrNotOpened
-	}
-
-	switch len(items) {
-	case 0:
-		return nil, base.ErrNothingToRead
-	case 1:
-	default:
-		if d.settings.computedconf&base.ConformanceBlockMultipleReferences == 0 { // one by one
-			var tmp [1]DlmsSNRequestItem
-			ret := make([]base.DlmsResultTag, 0, len(items))
-			for _, item := range items {
-				tmp[0] = item
-				data, err := d.Write(tmp[:])
-				if err != nil {
-					return nil, err
-				}
-				ret = append(ret, data[0])
-			}
-			return ret, nil
-		}
-	}
-
-	local := &d.pdu
-	local.Reset()
-	local.WriteByte(byte(base.TagWriteRequest))
-	encodelength(local, uint(len(items)))
-	for _, item := range items {
-		if item.HasAccess {
-			local.WriteByte(4)
-			local.WriteByte(byte(item.Address >> 8))
-			local.WriteByte(byte(item.Address))
-			local.WriteByte(item.AccessDescriptor)
-			err := encodeData(local, item.AccessData)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			local.WriteByte(2)
-			local.WriteByte(byte(item.Address >> 8))
-			local.WriteByte(byte(item.Address))
-		}
-	}
-
-	encodelength(local, uint(len(items)))
-	for _, item := range items {
-		err := encodeData(local, item.WriteData)
-		if err != nil {
-			return nil, err
-		}
-	}
-	tag, str, err := d.sendpdu()
-	if err != nil {
-		return nil, err
-	}
-	if tag != base.TagWriteResponse {
-		return nil, fmt.Errorf("unexpected tag: %x", tag)
-	}
-
-	l, _, err := decodelength(str, &d.tmpbuffer)
-	if err != nil {
-		return nil, err
-	}
-	if l != uint(len(items)) {
-		return nil, fmt.Errorf("different amount of data received, expected %d got %d", len(items), l)
-	}
-	ret := make([]base.DlmsResultTag, len(items))
-	for i := range ret {
-		_, err = io.ReadFull(str, d.tmpbuffer[:1])
-		if err != nil {
-			return nil, err
-		}
-		switch d.tmpbuffer[0] {
-		case 0:
-			ret[i] = base.TagResultSuccess
-		case 1:
-			_, err = io.ReadFull(str, d.tmpbuffer[:1])
-			if err != nil {
-				return nil, err
-			}
-			if d.tmpbuffer[0] == 0 {
-				ret[i] = base.TagResultOtherReason
-			} else {
-				ret[i] = base.DlmsResultTag(d.tmpbuffer[0])
-			}
-		default:
-			return nil, fmt.Errorf("unexpected write response item: %x", d.tmpbuffer[0])
-		}
-	}
-	return ret, nil
 }
