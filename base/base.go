@@ -31,24 +31,24 @@ func LogHex(s string, b []byte) string {
 	for _, v := range b {
 		if (cnt & 0xf) == 0 {
 			if sbl2.Len() != 0 {
-				sb.WriteString(" ")
+				sb.WriteString("  ")
 				sb.WriteString(sbl2.String())
-				sb.WriteString("\n")
+				sb.WriteByte('\n')
 			} else {
-				sb.WriteString("\n")
+				sb.WriteByte('\n')
 			}
 			sbl2.Reset()
 			sb.WriteString(fmt.Sprintf("%08X", cnt))
 			lastline = 9
 		}
 		sb.WriteString(fmt.Sprintf(" %02X", v))
-		sbl2.WriteString(byteToChar(v))
+		sbl2.WriteByte(byteToChar(v))
 		lastline += 3
 		cnt++
 	}
 	if sbl2.Len() != 0 {
-		for lastline < 58 {
-			sb.WriteString(" ")
+		for lastline < 59 {
+			sb.WriteByte(' ')
 			lastline++
 		}
 		sb.WriteString(sbl2.String())
@@ -57,9 +57,9 @@ func LogHex(s string, b []byte) string {
 	return sb.String()
 }
 
-func byteToChar(d byte) string {
+func byteToChar(d byte) byte {
 	if d >= 32 && d < 127 {
-		return string(d)
+		return d
 	}
-	return "."
+	return '.'
 }
