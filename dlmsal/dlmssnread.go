@@ -2,7 +2,6 @@ package dlmsal
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 
@@ -153,22 +152,49 @@ func (d *dlmsal) decodesnblockreader(str io.Reader, i int, ret []DlmsData) (int,
 		}
 	}
 	if blc.remain != 0 || !blc.lastblock {
-		d.logf("incomplete block read, remaining %d bytes, last block %v", blc.remain, blc.lastblock)
-		var buff [1024]byte
-		for {
-			n, err := blc.Read(buff[:])
-			if err != nil {
-				if !errors.Is(err, io.EOF) {
-					return i, err
-				}
-				break
-			}
-			if n == 0 {
-				return i, fmt.Errorf("no data read, shouldnt happen")
-			}
-		}
+		return i, fmt.Errorf("incomplete block read, remaining %d bytes, last block %v", blc.remain, blc.lastblock)
 	}
 	return i + int(items), nil
+}
+
+func (d *dlmsal) decodesnstreamblockreader(str io.Reader, inmem bool) (DlmsDataStream, error) {
+	var tmp tmpbuffer
+	blc := &dlmssnblockread{
+		transport: str,
+		master:    d,
+		blockexp:  1,
+	}
+
+	// read list of items after block header
+	items, _, err := decodelength(blc, &tmp) // that should fit too, fucking fuck
+	if err != nil {
+		return nil, err
+	}
+	if items != 1 {
+		return nil, fmt.Errorf("only single item is expected in stream block sn read, got %d", items)
+	}
+	_, err = io.ReadFull(blc, tmp[:1])
+	if err != nil {
+		return nil, err
+	}
+	switch tmp[0] {
+	case 0:
+		str, err := newDataStream(blc, inmem, d.logger)
+		if err != nil {
+			return nil, err
+		}
+		return str, nil
+	case 1: // that really should not happen, but who knows
+		_, err = io.ReadFull(blc, tmp[:1])
+		if err != nil {
+			return nil, err
+		}
+		if blc.remain != 0 || !blc.lastblock {
+			return nil, fmt.Errorf("incomplete block read, remaining %d bytes, last block %v", blc.remain, blc.lastblock)
+		}
+		return nil, NewDlmsError(base.DlmsResultTag(tmp[0]))
+	}
+	return nil, fmt.Errorf("unexpected response inner tag: 0x%02x", tmp[0])
 }
 
 func (d *dlmssnblockread) Read(p []byte) (n int, err error) {
@@ -309,6 +335,8 @@ func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream,
 			return nil, err
 		}
 		return nil, NewDlmsError(base.DlmsResultTag(d.tmpbuffer[0]))
+	case 2:
+		return d.decodesnstreamblockreader(str, inmem)
 	}
 
 	return nil, fmt.Errorf("unexpected response tag: 0x%02x", d.tmpbuffer[0])

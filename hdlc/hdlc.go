@@ -125,7 +125,7 @@ func (w *maclayer) logf(format string, v ...any) {
 	}
 }
 
-func (w *maclayer) logr(format string, v ...any) {
+func (w *maclayer) elogf(format string, v ...any) {
 	if w.logger != nil {
 		w.logger.Errorf(format, v...)
 	}
@@ -654,11 +654,11 @@ func (w *maclayer) readpackets() ([]macpacket, error) {
 			return nil, err
 		}
 		if m.log != w.settings.Logical {
-			w.logr("mismatch logical address expected %v, got %v", w.settings.Logical, m.log)
+			w.elogf("mismatch logical address expected %v, got %v", w.settings.Logical, m.log)
 			continue
 		}
 		if m.phy != w.settings.Physical {
-			w.logr("mismatch physical address expected %v, got %v", w.settings.Physical, m.phy)
+			w.elogf("mismatch physical address expected %v, got %v", w.settings.Physical, m.phy)
 			continue
 		}
 
