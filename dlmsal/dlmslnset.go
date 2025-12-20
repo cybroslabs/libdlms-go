@@ -94,7 +94,7 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]base.DlmsResultTag, error
 				ret[0] = (d.Value.(*DlmsError)).Result
 				return ret, nil
 			default:
-				return nil, fmt.Errorf("unexpected tag: %02x", tag)
+				return nil, fmt.Errorf("unexpected tag: 0x%02x", tag)
 			}
 
 			_, err = io.ReadFull(str, al.tmpbuffer[:6])
@@ -131,7 +131,7 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]base.DlmsResultTag, error
 				}
 				ret[0] = base.DlmsResultTag(al.tmpbuffer[2])
 			default:
-				return nil, fmt.Errorf("unexpected tag: %02x", al.tmpbuffer[0])
+				return nil, fmt.Errorf("unexpected tag: 0x%02x", al.tmpbuffer[0])
 			}
 		}
 	} else { // continue with normal set
@@ -150,7 +150,7 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]base.DlmsResultTag, error
 			ret[0] = (d.Value.(*DlmsError)).Result
 			return ret, nil
 		default:
-			return nil, fmt.Errorf("unexpected tag: %02x", tag)
+			return nil, fmt.Errorf("unexpected tag: 0x%02x", tag)
 		}
 
 		_, err = io.ReadFull(str, al.tmpbuffer[:3])
@@ -158,7 +158,7 @@ func (al *dlmsal) setsingle(item DlmsLNRequestItem) ([]base.DlmsResultTag, error
 			return nil, err
 		}
 		if al.tmpbuffer[0] != byte(TagSetResponseNormal) {
-			return nil, fmt.Errorf("unexpected tag: %02x, expected TagSetResponseNormal", al.tmpbuffer[0])
+			return nil, fmt.Errorf("unexpected tag: 0x%02x, expected TagSetResponseNormal", al.tmpbuffer[0])
 		}
 		if al.tmpbuffer[1]&7 != al.invokeid {
 			return nil, fmt.Errorf("unexpected invoke id")
@@ -275,7 +275,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 				}
 				return ret, nil
 			default:
-				return nil, fmt.Errorf("unexpected tag: %02x", tag)
+				return nil, fmt.Errorf("unexpected tag: 0x%02x", tag)
 			}
 
 			_, err = io.ReadFull(str, al.tmpbuffer[:2])
@@ -331,7 +331,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 					ret[i] = base.DlmsResultTag(res[i])
 				}
 			default:
-				return nil, fmt.Errorf("unexpected tag: %02x", al.tmpbuffer[0])
+				return nil, fmt.Errorf("unexpected tag: 0x%02x", al.tmpbuffer[0])
 			}
 		}
 	} else { // continue with normal list set
@@ -352,7 +352,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 			}
 			return ret, nil
 		default:
-			return nil, fmt.Errorf("unexpected tag: %02x", tag)
+			return nil, fmt.Errorf("unexpected tag: 0x%02x", tag)
 		}
 
 		_, err = io.ReadFull(str, al.tmpbuffer[:2])
@@ -360,7 +360,7 @@ func (al *dlmsal) Set(items []DlmsLNRequestItem) (ret []base.DlmsResultTag, err 
 			return nil, err
 		}
 		if al.tmpbuffer[0] != byte(TagSetResponseWithList) {
-			return nil, fmt.Errorf("unexpected tag: %02x, expected TagSetResponseWithList", al.tmpbuffer[0])
+			return nil, fmt.Errorf("unexpected tag: 0x%02x, expected TagSetResponseWithList", al.tmpbuffer[0])
 		}
 		if al.tmpbuffer[1]&7 != al.invokeid {
 			return nil, fmt.Errorf("unexpected invoke id")

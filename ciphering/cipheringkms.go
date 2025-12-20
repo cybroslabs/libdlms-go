@@ -196,7 +196,7 @@ func (g *cipheringkms) Verify(sc byte, fc uint32, hash []byte) (bool, error) {
 // Decrypt2 implements Gcm.
 func (g *cipheringkms) Decrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error) {
 	if scContent != scControl {
-		return nil, fmt.Errorf("scContent %02X != scControl %02X", scContent, scControl)
+		return nil, fmt.Errorf("scContent 0x%02X != scControl 0x%02X", scContent, scControl)
 	}
 
 	err := g.init()
@@ -226,7 +226,7 @@ func (g *cipheringkms) Decrypt2(ret []byte, scControl byte, scContent byte, fc u
 // Encrypt2 implements Gcm.
 func (g *cipheringkms) Encrypt2(ret []byte, scControl byte, scContent byte, fc uint32, apdu []byte) ([]byte, error) { // check systitle equality, but it really hurts sending it every packet
 	if scContent != scControl {
-		return nil, fmt.Errorf("scContent %02X != scControl %02X", scContent, scControl)
+		return nil, fmt.Errorf("scContent 0x%02X != scControl 0x%02X", scContent, scControl)
 	}
 
 	err := g.init()
@@ -278,8 +278,8 @@ func (g *cipheringkms) GetEncryptLength(scControl byte, apdu []byte) (int, error
 	case 0x10, 0x30:
 		return len(apdu) + GCM_TAG_LENGTH, nil
 	}
-	g.logger.Fatalf("GetEncryptLength not implemented for scControl %02X", scControl)
-	panic(fmt.Sprintf("GetEncryptLength not implemented for scControl %02X", scControl)) // shouoldnt reach this point
+	g.logger.Fatalf("GetEncryptLength not implemented for scControl 0x%02X", scControl)
+	panic(fmt.Sprintf("GetEncryptLength not implemented for scControl 0x%02X", scControl)) // shouoldnt reach this point
 }
 
 func (g *cipheringkms) Dispose() {

@@ -66,7 +66,7 @@ func (d *dlmsal) Write(items []DlmsSNRequestItem) ([]base.DlmsResultTag, error) 
 		return nil, err
 	}
 	if tag != base.TagWriteResponse {
-		return nil, fmt.Errorf("unexpected tag: %x", tag)
+		return nil, fmt.Errorf("unexpected tag: 0x%02x", tag)
 	}
 
 	l, _, err := decodelength(str, &d.tmpbuffer)
@@ -96,7 +96,7 @@ func (d *dlmsal) Write(items []DlmsSNRequestItem) ([]base.DlmsResultTag, error) 
 				ret[i] = base.DlmsResultTag(d.tmpbuffer[0])
 			}
 		default:
-			return nil, fmt.Errorf("unexpected write response item: %x", d.tmpbuffer[0])
+			return nil, fmt.Errorf("unexpected write response item: 0x%02x", d.tmpbuffer[0])
 		}
 	}
 	return ret, nil

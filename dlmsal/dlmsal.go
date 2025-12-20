@@ -424,7 +424,7 @@ func (d *dlmsal) Open() error { // login and shits
 		return fmt.Errorf("unable to parse aare: %w", err)
 	}
 	if tag != byte(base.TagAARE) {
-		return fmt.Errorf("unexpected tag: %x", tag)
+		return fmt.Errorf("unexpected tag: 0x%02x", tag)
 	}
 	tags, err := decodeaare(data, &d.tmpbuffer)
 	if err != nil {
@@ -455,7 +455,7 @@ func (d *dlmsal) Open() error { // login and shits
 		case base.BERTypeContext | base.PduTypeCallingAEInvocationID: // 0x89
 			d.settings.ServerAuthenticationMechanismId, err = parseAEInvocationID(dt)
 		default:
-			d.logf("Unknown tag: %02x", dt.tag)
+			d.logf("Unknown tag: 0x%02x", dt.tag)
 		}
 
 		if err != nil {

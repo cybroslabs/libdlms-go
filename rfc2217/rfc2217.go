@@ -201,7 +201,7 @@ func (r *rfc2217Serial) processCommand(cmd byte) (err error) {
 	case SB:
 		return r.handleSubnegotiation()
 	default:
-		r.logf("unknown/unsupported command: %02x", cmd)
+		r.logf("unknown/unsupported command: 0x%02x", cmd)
 	}
 	return nil
 }
@@ -247,7 +247,7 @@ func (r *rfc2217Serial) processSubnegotiation(sub []byte) error {
 		return fmt.Errorf("subnegotiation too short")
 	}
 	if sub[0] != COM_PORT_OPTION {
-		return fmt.Errorf("unsupported subnegotiation option %02x", sub[0])
+		return fmt.Errorf("unsupported subnegotiation option 0x%02x", sub[0])
 	}
 	sub = sub[1:]
 	switch sub[0] {
@@ -270,7 +270,7 @@ func (r *rfc2217Serial) processSubnegotiation(sub []byte) error {
 		switch base.SerialDataBits(sub[1]) {
 		case base.Serial5DataBits, base.Serial6DataBits, base.Serial7DataBits, base.Serial8DataBits:
 		default:
-			return fmt.Errorf("unsupported data bits %02x", sub[1])
+			return fmt.Errorf("unsupported data bits 0x%02x", sub[1])
 		}
 		databits := base.SerialDataBits(sub[1])
 		r.logf("reported data bits: %v", databits)
@@ -281,7 +281,7 @@ func (r *rfc2217Serial) processSubnegotiation(sub []byte) error {
 		switch base.SerialParity(sub[1]) {
 		case base.SerialNoParity, base.SerialOddParity, base.SerialEvenParity, base.SerialMarkParity, base.SerialSpaceParity:
 		default:
-			return fmt.Errorf("unsupported parity %02x", sub[1])
+			return fmt.Errorf("unsupported parity 0x%02x", sub[1])
 		}
 		parity := base.SerialParity(sub[1])
 		r.logf("reported parity: %v", parity)
@@ -292,7 +292,7 @@ func (r *rfc2217Serial) processSubnegotiation(sub []byte) error {
 		switch base.SerialStopBits(sub[1]) {
 		case base.SerialOneStopBit, base.SerialTwoStopBits, base.SerialOneAndHalfStopBits:
 		default:
-			return fmt.Errorf("unsupported stop bits %02x", sub[1])
+			return fmt.Errorf("unsupported stop bits 0x%02x", sub[1])
 		}
 		stopbits := base.SerialStopBits(sub[1])
 		r.logf("reported stop bits: %v", stopbits)
@@ -305,20 +305,20 @@ func (r *rfc2217Serial) processSubnegotiation(sub []byte) error {
 			control := base.SerialFlowControl(sub[1])
 			r.logf("reported control: %v", control)
 		default:
-			r.logf("unsupported control %02x", sub[1])
+			r.logf("unsupported control 0x%02x", sub[1])
 		}
 	case 106: // notify line state
 		if len(sub) != 2 {
 			return fmt.Errorf("invalid subnegotiation length")
 		}
 		r.linestate = sub[1]
-		r.logf("reported line state: %02x", r.linestate)
+		r.logf("reported line state: 0x%02x", r.linestate)
 	case 107: // notify modem state
 		if len(sub) != 2 {
 			return fmt.Errorf("invalid subnegotiation length")
 		}
 		r.modemstate = sub[1]
-		r.logf("reported modem state: %02x", r.modemstate)
+		r.logf("reported modem state: 0x%02x", r.modemstate)
 	case 108, 109: // flow control suspend, flow control resume
 		if len(sub) != 1 {
 			return fmt.Errorf("invalid subnegotiation length")
@@ -328,9 +328,9 @@ func (r *rfc2217Serial) processSubnegotiation(sub []byte) error {
 		if len(sub) != 2 {
 			return fmt.Errorf("invalid subnegotiation length")
 		}
-		r.logf("access server notification: %d with data %02x", sub[0], sub[1])
+		r.logf("access server notification: %d with data 0x%02x", sub[0], sub[1])
 	default:
-		return fmt.Errorf("unsupported subnegotiation command %02x", sub[0])
+		return fmt.Errorf("unsupported subnegotiation command 0x%02x", sub[0])
 	}
 	return nil
 }

@@ -103,7 +103,7 @@ func (ln *dlmsalaction) action(item DlmsLNRequestItem) (*DlmsData, error) {
 				ln.transport = str
 				return ln.actiondata(tag)
 			default:
-				return nil, fmt.Errorf("unexpected tag: %02x", tag)
+				return nil, fmt.Errorf("unexpected tag: 0x%02x", tag)
 			}
 
 			_, err = io.ReadFull(str, master.tmpbuffer[:2])
@@ -144,7 +144,7 @@ func (ln *dlmsalaction) action(item DlmsLNRequestItem) (*DlmsData, error) {
 				ln.transport = str
 				return ln.actiondatinnertag(ActionResponseTag(master.tmpbuffer[0]))
 			default:
-				return nil, fmt.Errorf("unexpected tag: %02x", master.tmpbuffer[0])
+				return nil, fmt.Errorf("unexpected tag: 0x%02x", master.tmpbuffer[0])
 			}
 		}
 		return nil, fmt.Errorf("program error, unexpected state: %v", ln.state)
@@ -224,7 +224,7 @@ func (ln *dlmsalaction) actiondata(tag base.CosemTag) (data *DlmsData, err error
 			d, err := decodeException(ln.transport, &master.tmpbuffer)
 			return &d, err // dont decode exception pdu
 		default:
-			return data, fmt.Errorf("unexpected tag: %02x", tag)
+			return data, fmt.Errorf("unexpected tag: 0x%02x", tag)
 		}
 		_, err = io.ReadFull(ln.transport, master.tmpbuffer[:2])
 		if err != nil {

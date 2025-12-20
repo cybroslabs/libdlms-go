@@ -239,7 +239,7 @@ func (d *dlmsal) parseCalledAEInvocationID(tag aaretag) error {
 		return err
 	}
 
-	d.dlogf("parseCalledAEInvocationID (currently unused): tag=%02x inner_tag=%02x", tag.tag, t)
+	d.dlogf("parseCalledAEInvocationID (currently unused): tag=0x%02x inner_tag=0x%02x", tag.tag, t)
 	return nil
 }
 
@@ -314,7 +314,7 @@ func (al *dlmsal) parseUserInformationtag(d []byte) (ir *initiateResponse, cse *
 		return al.parseUserInformationtag(decxdlms)
 	}
 
-	err = fmt.Errorf("unexpected user information tag %02x", d[0])
+	err = fmt.Errorf("unexpected user information tag 0x%02x", d[0])
 	return
 }
 

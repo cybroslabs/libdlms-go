@@ -247,7 +247,7 @@ func (w *maclayer) Open() error {
 	}
 
 	if r[0].control != 0x63 {
-		return fmt.Errorf("invalid snrm answer, expected UA, got %x", r[0].control)
+		return fmt.Errorf("invalid snrm answer, expected UA, got 0x%02x", r[0].control)
 	}
 	err = w.parsesnrmua(r[0].info)
 	if err != nil {
@@ -343,7 +343,7 @@ func (w *maclayer) getnextI() (pck *macpacket, err error) {
 				return nil, fmt.Errorf("invalid unexpected packet numbering (RRR)")
 			}
 		} else {
-			return nil, fmt.Errorf("unexpected frame type %x", pck.control)
+			return nil, fmt.Errorf("unexpected frame type 0x%02x", pck.control)
 		}
 	}
 	return nil, nil
@@ -466,7 +466,7 @@ func (w *maclayer) processRRresp() error {
 				return fmt.Errorf("invalid RRR numbering (repetition not yet supported)")
 			}
 		} else {
-			return fmt.Errorf("unexpected frame type %x", p.control)
+			return fmt.Errorf("unexpected frame type 0x%02x", p.control)
 		}
 	}
 	// clear references? max bytes is about packets * 2kB, so 40kB in default
@@ -673,7 +673,7 @@ func (w *maclayer) readpackets() ([]macpacket, error) {
 
 func (w *maclayer) parseminheader() (uint, error) {
 	if (w.recvbuffer[1] & 0xf0) != 0xa0 {
-		return 0, fmt.Errorf("invalid starting packet: %X", w.recvbuffer[1])
+		return 0, fmt.Errorf("invalid starting packet: 0x%02x", w.recvbuffer[1])
 	}
 	length := ((uint(w.recvbuffer[1]) & 7) << 8) | uint(w.recvbuffer[2])
 	if length < 7 {

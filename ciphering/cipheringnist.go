@@ -235,7 +235,7 @@ func (g *cipheringnist) Decrypt2(ret []byte, scControl byte, scContent byte, fc 
 		g.aad[0] = scContent
 		return g.nist.Open(ret[:0], g.iv[:], apdu, g.aad)
 	default:
-		return nil, fmt.Errorf("scControl %02X not supported", scControl)
+		return nil, fmt.Errorf("scControl 0x%02X not supported", scControl)
 	}
 }
 
@@ -323,7 +323,7 @@ func (g *cipheringnist) GetEncryptLength(scControl byte, apdu []byte) (int, erro
 	case 0x10, 0x30:
 		return len(apdu) + GCM_TAG_LENGTH, nil
 	}
-	return 0, fmt.Errorf("GetEncryptLength not implemented for scControl %02X", scControl)
+	return 0, fmt.Errorf("GetEncryptLength not implemented for scControl 0x%02X", scControl)
 }
 
 // this is not thread safe at all

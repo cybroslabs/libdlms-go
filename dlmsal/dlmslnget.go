@@ -133,7 +133,7 @@ func (ln *dlmsalget) getstreamdata(tag base.CosemTag, inmem bool) (s DlmsDataStr
 		ex := d.Value.(*DlmsError)
 		return nil, ex // dont decode exception pdu, maybe todo, should be 2 bytes
 	default:
-		return nil, fmt.Errorf("unexpected tag: %02x", tag)
+		return nil, fmt.Errorf("unexpected tag: 0x%02x", tag)
 	}
 	_, err = io.ReadFull(ln.transport, master.tmpbuffer[:2])
 	if err != nil {
@@ -192,7 +192,7 @@ func (ln *dlmsalget) getnextdata(tag base.CosemTag, i int) (cont bool, err error
 			ln.state = 100
 			return true, err
 		default:
-			return false, fmt.Errorf("unexpected tag: %02x", tag)
+			return false, fmt.Errorf("unexpected tag: 0x%02x", tag)
 		}
 		_, err = io.ReadFull(ln.transport, master.tmpbuffer[:2])
 		if err != nil {

@@ -73,7 +73,7 @@ func (d *dlmsal) Read(items []DlmsSNRequestItem) ([]DlmsData, error) {
 	}
 
 	if tag != base.TagReadResponse {
-		return nil, fmt.Errorf("unexpected tag: %x", tag)
+		return nil, fmt.Errorf("unexpected tag: 0x%02x", tag)
 	}
 	l, _, err := decodelength(str, &d.tmpbuffer)
 	if err != nil {
@@ -240,7 +240,7 @@ func (d *dlmssnblockread) Read(p []byte) (n int, err error) {
 			}
 			d.transport = str
 			if tag != base.TagReadResponse {
-				d.err = fmt.Errorf("unexpected tag: %x", tag)
+				d.err = fmt.Errorf("unexpected tag: 0x%02x", tag)
 				return 0, d.err
 			}
 			l, _, err := decodelength(str, &d.master.tmpbuffer)
@@ -308,7 +308,7 @@ func (d *dlmsal) ReadStream(item DlmsSNRequestItem, inmem bool) (DlmsDataStream,
 	}
 
 	if tag != base.TagReadResponse {
-		return nil, fmt.Errorf("unexpected tag: %x", tag)
+		return nil, fmt.Errorf("unexpected tag: 0x%02x", tag)
 	}
 	l, _, err := decodelength(str, &d.tmpbuffer)
 	if err != nil {
