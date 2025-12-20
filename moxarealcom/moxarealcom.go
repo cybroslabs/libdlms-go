@@ -6,7 +6,6 @@ import (
 	"net"
 	"slices"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -75,7 +74,7 @@ func (w *moxaRealCom) logf(format string, v ...any) {
 	}
 }
 
-func (w *moxaRealCom) logd(format string, v ...any) {
+func (w *moxaRealCom) dlogf(format string, v ...any) {
 	if w.logger != nil {
 		w.logger.Debugf(format, v...)
 	}
@@ -167,25 +166,24 @@ func (m *moxaRealCom) Open() error { // first open cmd port and send the init
 		return err
 	}
 
-	var dataerr error
 	var cmderr error
-	var wg sync.WaitGroup
 	address := net.JoinHostPort(m.hostname, strconv.Itoa(m.cmdport))
-	wg.Go(func() {
-		dataerr = m.transport.Open()
-	})
-	m.cmdconn, cmderr = net.DialTimeout("tcp", address, m.timeout)
-	wg.Wait()
-	if dataerr != nil {
-		if m.cmdconn != nil {
-			_ = m.cmdconn.Close()
+	func() {
+		for range 2 { // defaul moxa wakeup probably
+			m.cmdconn, cmderr = net.Dial("tcp", address) // no timeout here
+			if cmderr == nil {
+				return
+			}
 		}
-		return dataerr
-	}
+	}()
 	if cmderr != nil {
-		_ = m.transport.Disconnect()
 		m.logf("Connect to %s failed: %v", address, cmderr)
 		return fmt.Errorf("connect to command port failed: %w", cmderr)
+	}
+	dataerr := m.transport.Open()
+	if dataerr != nil {
+		_ = m.cmdconn.Close()
+		return dataerr
 	}
 
 	initcmd[0] = ASPP_CMD_PORT_INIT
@@ -274,7 +272,7 @@ func (m *moxaRealCom) commandhandler() {
 			return
 		}
 		ccmd = cmdbuff[:wlen]
-		m.logd(base.LogHex("CMD RX", ccmd))
+		m.dlogf(base.LogHex("CMD RX", ccmd))
 		m.incoming.Add(int64(len(ccmd)))
 
 		if expected == 0 {
@@ -304,7 +302,7 @@ func (m *moxaRealCom) commandhandler() {
 		case ASPP_CMD_POLLING:
 			m.logf("polling received, sending alive answer")
 			ccmd[0] = ASPP_CMD_ALIVE
-			m.logd(base.LogHex("CMD TX", ccmd))
+			m.dlogf(base.LogHex("CMD TX", ccmd))
 			_, err = m.cmdconn.Write(ccmd) // thread safe, so no lock here
 			if err != nil {
 				m.logf("unable to send alive response: %v", err)
@@ -339,7 +337,7 @@ func (m *moxaRealCom) handlecommand(cmd []byte) ([]byte, error) {
 	if m.timeout != 0 {
 		_ = m.cmdconn.SetWriteDeadline(time.Now().Add(m.timeout))
 	}
-	m.logd(base.LogHex("CMD TX", cmd))
+	m.dlogf(base.LogHex("CMD TX", cmd))
 	_, err := m.cmdconn.Write(cmd)
 	if err != nil {
 		return nil, err
