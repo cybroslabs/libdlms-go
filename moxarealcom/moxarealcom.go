@@ -168,14 +168,12 @@ func (m *moxaRealCom) Open() error { // first open cmd port and send the init
 
 	var cmderr error
 	address := net.JoinHostPort(m.hostname, strconv.Itoa(m.cmdport))
-	func() {
-		for range 2 { // defaul moxa wakeup probably
-			m.cmdconn, cmderr = net.Dial("tcp", address) // no timeout here
-			if cmderr == nil {
-				return
-			}
+	for range 2 { // defaul moxa wakeup probably
+		m.cmdconn, cmderr = net.Dial("tcp", address) // no timeout here
+		if cmderr == nil {
+			break
 		}
-	}()
+	}
 	if cmderr != nil {
 		m.logf("Connect to %s failed: %v", address, cmderr)
 		return fmt.Errorf("connect to command port failed: %w", cmderr)
